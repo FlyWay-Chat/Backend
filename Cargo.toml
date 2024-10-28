@@ -1,0 +1,31 @@
+# Copyright (C) 2024 TinyBlueSapling
+# This file is part of BeTalky.
+# 
+# BeTalky is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# BeTalky is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+# 
+# You should have received a copy of the GNU Affero General Public License
+# along with BeTalky. If not, see <https://www.gnu.org/licenses/>.
+
+[package]
+name = "betalky-backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dotenv = "0.15.0"
+rocket = { version = "0.5.1", features = ["json"] }
+reqwest = { version = "0.12.8", features = ["json"] }
+tokio-postgres = { version = "0.7.12", features = ["with-uuid-1", "with-serde_json-1"] }
+argon2 = "0.5.3"
+totp-rs = { version = "5.6.0", features = ["gen_secret"] }
+jsonwebtoken = "9.3.0"
+uuid = { version = "1.10.0", features = ["v4"] }
+rand = "0.8.5"
