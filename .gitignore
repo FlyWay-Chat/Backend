@@ -23,5 +23,11 @@ Cargo.lock
 # .env
 .env
 
+# macOS
+.DS_STORE
+
+# watchexec
+.watchexec/
+
 # Experimenting route
 src/routes/experimenting.rs

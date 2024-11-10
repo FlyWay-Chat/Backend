@@ -14,4 +14,26 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 
-npx nodemon --watch src -e rs --exec cargo run
+#!/bin/bash
+LOCAL_WATCHEXEC_DIR="./.watchexec"
+WATCHEXEC="$LOCAL_WATCHEXEC_DIR/bin/watchexec"
+
+# Use a global watchexec install (if available)
+GLOBAL_WATCHEXEC=$(which watchexec)
+if [[ -n "$GLOBAL_WATCHEXEC" ]]; then
+  WATCHEXEC="$GLOBAL_WATCHEXEC"
+fi
+
+# Install watchexec locally (if needed)
+if [ ! -f "$WATCHEXEC" ]; then
+    echo "watchexec not found. Installing locally..."
+    
+    # Create the directory if it doesn't exist
+    mkdir -p "$LOCAL_WATCHEXEC_DIR"
+    
+    # Install watchexec
+    cargo install --locked watchexec-cli --root "$LOCAL_WATCHEXEC_DIR"
+fi
+
+# Run watchexec
+"$WATCHEXEC" --project-origin src -e rs -r cargo run
