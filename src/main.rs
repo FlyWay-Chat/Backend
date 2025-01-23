@@ -18,7 +18,7 @@ along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome, Request};
-use rocket::response::stream::Event;
+use rocket::response::{Result, Responder, stream::Event};
 use rocket::tokio::sync::{mpsc, Mutex};
 use std::sync::Arc;
 use tokio_postgres::Client;
@@ -30,7 +30,7 @@ extern crate dotenv;
 mod routes;
 mod utils;
 
-pub type WebsocketClients = Arc<Mutex<Vec<(String, mpsc::UnboundedSender<Event>)>>>;
+pub type SSEClients = Arc<Mutex<Vec<(String, mpsc::UnboundedSender<Event>)>>>;
 
 pub struct Auth(String);
 #[rocket::async_trait]
@@ -38,7 +38,7 @@ impl<'r> FromRequest<'r> for Auth {
     type Error = ();
 
     async fn from_request(request: &'r Request<'_>) -> Outcome<Auth, ()> {
-        let token = request.headers().get_one("Authorization").unwrap();
+        let token = request.headers().get_one("Authorization").unwrap().split_whitespace().collect::<Vec<&str>>()[1];
 
         if !utils::account::validate_token(token) {
             return Outcome::Forward(Status::Unauthorized);
@@ -60,16 +60,30 @@ impl<'r> FromRequest<'r> for Auth {
     }
 }
 
+pub struct AppError(Status);
+
+impl From<tokio_postgres::Error> for AppError {
+    fn from(_: tokio_postgres::Error) -> Self {
+        AppError(Status::InternalServerError)
+    }
+}
+
+impl<'r> Responder<'r, 'static> for AppError {
+    fn respond_to(self, _: &'r Request<'_>) -> Result<'static> {
+        Err(self.0)
+    }
+}
+
 #[launch]
 async fn rocket() -> _ {
     // Initialize
     dotenv::dotenv().ok();
     let database = utils::database::connect().await.unwrap();
-    let websockets: WebsocketClients = Arc::new(Mutex::new(vec![]));
+    let sse_clients: SSEClients = Arc::new(Mutex::new(vec![]));
 
     // Routes
     rocket::build()
-        .manage(websockets)
+        .manage(sse_clients)
         .manage(database)
         .mount("/", routes::get_routes())
 }

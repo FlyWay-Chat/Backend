@@ -17,6 +17,7 @@ along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 */
 
 use rocket::serde::Serialize;
+use crate::routes::structs::ReturnedUserMe;
 
 #[derive(Serialize)]
 #[serde(crate = "rocket::serde")]
@@ -24,7 +25,7 @@ pub struct SSEEvent<'r> {
     pub event: &'r str,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub user: Option<&'r str>,
+    pub user: Option<&'r ReturnedUserMe>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guild: Option<&'r str>,

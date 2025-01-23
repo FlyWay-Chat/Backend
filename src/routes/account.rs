@@ -23,25 +23,27 @@ use argon2::{
 use rocket::serde::json::Json;
 use rocket::{http::Status, Route, State};
 
-use crate::utils;
+use crate::{utils, AppError};
 
-use crate::routes::structs::{SigninBody, SigninResp, SignupBody, ResetRequestBody, ResetBody};
+use super::structs::{SigninBody, SigninResp, SignupBody, ResetRequestBody, ResetBody};
 
 #[post("/signin", format = "json", data = "<body>")]
 async fn signin(
-    body: Json<SigninBody<'_>>,
+    body: Json<SigninBody>,
     database: &State<tokio_postgres::Client>,
-) -> Result<Json<SigninResp>, Status> {
+) -> Result<Json<SigninResp>, AppError> {
+    // Check if user exists
     let pre_user = database
         .query_one("SELECT * FROM users WHERE email = $1", &[&body.email])
         .await;
 
     if pre_user.is_err() {
-        return Err(Status::Unauthorized);
+        return Err(AppError(Status::Unauthorized));
     }
 
     let user = pre_user.unwrap();
 
+    // Check if password is correct
     if Argon2::default()
         .verify_password(
             body.password.as_bytes(),
@@ -49,32 +51,31 @@ async fn signin(
         )
         .is_err()
     {
-        return Err(Status::Unauthorized);
+        return Err(AppError(Status::Unauthorized));
     }
 
+    // Check if user is verified
     if !user.get::<&str, bool>("verified") {
-        return Err(Status::PreconditionRequired);
+        return Err(AppError(Status::PreconditionRequired));
     }
 
+    // Verify OTP
     let tfa_secret = &user.try_get::<&str, &str>("otp");
-    if !tfa_secret.is_err() && !utils::account::verify_otp(tfa_secret.as_ref().unwrap(), body.otp.unwrap_or("")) {
-        return Err(Status::Unauthorized);
+    if !tfa_secret.is_err() && !utils::account::verify_otp(tfa_secret.as_ref().unwrap(), &body.otp.clone().unwrap_or(String::new())) {
+        return Err(AppError(Status::Unauthorized));
     }
 
-    let mut token = user.get::<&str, String>("token");
+    let mut token = user.try_get::<&str, String>("token").unwrap_or(String::new());
 
+    // Generate token if not exists
     if !utils::account::validate_token(token.as_str()) {
         token = utils::account::generate_token(user.get::<&str, uuid::Uuid>("id").to_string()).unwrap();
-        if database
+        database
             .execute(
                 "UPDATE users SET token = $1 WHERE email = $2",
                 &[&token, &body.email],
             )
-            .await
-            .is_err()
-        {
-            return Err(Status::InternalServerError);
-        }
+            .await?;
     }
 
     Ok(Json(SigninResp { token }))
@@ -82,48 +83,47 @@ async fn signin(
 
 #[post("/signup", format = "json", data = "<body>")]
 async fn signup(
-    body: Json<SignupBody<'_>>,
+    body: Json<SignupBody>,
     database: &State<tokio_postgres::Client>,
-) -> Result<(), Status> {
+) -> Result<(), AppError> {
+    // Check if username is too long
     if body.username.len() > 30 {
-        return Err(Status::UnprocessableEntity);
+        return Err(AppError(Status::BadRequest));
     }
 
+    // Check if user with email exists
     let bad_user = database
         .query_one("SELECT * FROM users WHERE email = $1", &[&body.email])
         .await;
 
     if !bad_user.is_err() {
+        // Check if user with email is verified
         if bad_user.unwrap().get::<&str, bool>("verified") {
-            return Err(Status::Unauthorized);
-        } else if database
+            return Err(AppError(Status::Unauthorized));
+        } else {
+            // Delete unverified user
+            database
             .execute("DELETE FROM users WHERE email = $1", &[&body.email])
-            .await
-            .is_err()
-        {
-            return Err(Status::InternalServerError);
+            .await?;
         }
     }
 
+    // Get all users with same username
     let same_usernames = database
         .query("SELECT * FROM users WHERE username = $1", &[&body.username])
-        .await;
-
-    if same_usernames.is_err() {
-        return Err(Status::InternalServerError);
-    }
+        .await?;
 
     // Generate discriminator
     let discriminator = utils::account::generate_discriminator(
         &same_usernames
-            .unwrap()
             .iter()
             .map(|row| row.get::<&str, &str>("discriminator"))
             .collect::<Vec<&str>>(),
     );
 
+    // All discriminators are taken
     if discriminator.is_none() {
-        return Err(Status::Conflict);
+        return Err(AppError(Status::Conflict));
     }
 
     // Create user
@@ -135,10 +135,8 @@ async fn signup(
     let token = utils::account::generate_token(id.to_string()).unwrap();
     let verificator = uuid::Uuid::new_v4().to_string();
 
-    if database.execute("INSERT INTO users (id, token, email, password, username, discriminator, avatar, creation, type, verified, verificator) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)", &[&id, &token, &body.email, &password, &body.username, &discriminator, &"userDefault", &(std::time::SystemTime::now()
-    .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64), &"USER", &false, &verificator]).await.is_err() {
-        return Err(Status::InternalServerError);
-    }
+    database.execute("INSERT INTO users (id, token, email, password, username, discriminator, avatar, creation, type, verified, verificator) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)", &[&id, &token, &body.email, &password, &body.username, &discriminator, &"userDefault", &(std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64), &"USER", &false, &verificator]).await?;
 
     Ok(())
 }
@@ -147,58 +145,53 @@ async fn signup(
 async fn verify(
     code: &str,
     database: &State<tokio_postgres::Client>,
-) -> Result<Json<SigninResp>, Status> {
+) -> Result<Json<SigninResp>, AppError> {
+    // Check if user exists
     let pre_user = database
         .query_one("SELECT * FROM users WHERE verificator = $1", &[&code])
         .await;
 
     if pre_user.is_err() {
-        return Err(Status::Unauthorized);
+        return Err(AppError(Status::Unauthorized));
     }
 
-    if database
+    // Verify user
+    database
         .execute(
             "UPDATE users SET verified = $1, verificator = $2 WHERE verificator = $3",
             &[&true, &"", &code],
         )
-        .await
-        .is_err()
-    {
-        return Err(Status::InternalServerError);
-    }
+        .await?;
 
     Ok(Json(SigninResp {
-        token: pre_user.unwrap().get::<&str, String>("token"),
+        token: pre_user.unwrap().try_get::<&str, String>("token").unwrap_or(String::new()),
     }))
 }
 
 #[post("/reset/request", format = "json", data = "<body>")]
 async fn reset_request(
-    body: Json<ResetRequestBody<'_>>,
+    body: Json<ResetRequestBody>,
     database: &State<tokio_postgres::Client>,
-) -> Result<(), Status> {
+) -> Result<(), AppError> {
+    // Check if user exists
     let pre_user = database
         .query_one("SELECT * FROM users WHERE email = $1", &[&body.email])
         .await;
 
     if pre_user.is_err() {
-        return Err(Status::Unauthorized);
+        return Err(AppError(Status::Unauthorized));
     }
 
     let verificator = uuid::Uuid::new_v4().to_string();
 
     // TODO: email the verificator
 
-    if database
+    database
         .execute(
             "UPDATE users SET verificator = $1 WHERE email = $2",
             &[&verificator, &body.email],
         )
-        .await
-        .is_err()
-    {
-        return Err(Status::InternalServerError);
-    }
+        .await?;
 
     Ok(())
 }
@@ -207,49 +200,52 @@ async fn reset_request(
 async fn reset_check(
     code: &str,
     database: &State<tokio_postgres::Client>,
-) -> Result<(), Status> {
+) -> Result<(), AppError> {
+    // Check if user exists
     let pre_user = database
         .query_one("SELECT * FROM users WHERE verificator = $1", &[&code])
         .await;
 
     if pre_user.is_err() {
-        return Err(Status::Unauthorized);
+        return Err(AppError(Status::Unauthorized));
     }
+
+    // TODO: Implement reset check
 
     Ok(())
 }
 
 #[post("/reset/<code>", format = "json", data = "<body>")]
 async fn reset(
-    body: Json<ResetBody<'_>>,
+    body: Json<ResetBody>,
     code: &str,
     database: &State<tokio_postgres::Client>,
-) -> Result<Json<SigninResp>, Status> {
+) -> Result<Json<SigninResp>, AppError> {
+    // Check if user exists
     let pre_user = database
         .query_one("SELECT * FROM users WHERE verificator = $1", &[&code])
         .await;
 
     if pre_user.is_err() {
-        return Err(Status::Unauthorized);
+        return Err(AppError(Status::Unauthorized));
     }
 
+    // Generate token
     let token =
         utils::account::generate_token(pre_user.unwrap().get::<&str, uuid::Uuid>("id").to_string()).unwrap();
+
+    // Hash password
     let password = Argon2::default()
         .hash_password(body.password.as_bytes(), &SaltString::generate(&mut OsRng))
         .unwrap()
         .to_string();
 
-    if database
+    database
         .execute(
             "UPDATE users SET token = $1, password = $2, verificator = $3 WHERE verificator = $4",
             &[&token, &password, &"", &code],
         )
-        .await
-        .is_err()
-    {
-        return Err(Status::InternalServerError);
-    }
+        .await?;
 
     Ok(Json(SigninResp {
         token,

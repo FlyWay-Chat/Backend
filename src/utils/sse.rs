@@ -21,7 +21,7 @@ use rocket::tokio::sync::mpsc;
 use rocket::{http::Status, Route, State};
 
 #[get("/sse?<token>")]
-async fn stream(token: &str, websockets: &State<crate::WebsocketClients>, database: &State<tokio_postgres::Client>) -> Result<EventStream![], Status> {
+async fn stream(token: &str, sse_clients: &State<crate::SSEClients>, database: &State<tokio_postgres::Client>) -> Result<EventStream![], Status> {
     let user = database
         .query_one("SELECT * FROM users WHERE token = $1", &[&token])
         .await;
@@ -32,7 +32,7 @@ async fn stream(token: &str, websockets: &State<crate::WebsocketClients>, databa
 
     let (tx, mut rx) = mpsc::unbounded_channel();
 
-    let mut client_lock = websockets.lock().await;
+    let mut client_lock = sse_clients.lock().await;
     client_lock.push((user.unwrap().get::<&str, uuid::Uuid>("id").to_string(), tx));
 
     Ok(EventStream! {
@@ -42,8 +42,8 @@ async fn stream(token: &str, websockets: &State<crate::WebsocketClients>, databa
     })
 }
 
-pub async fn broadcast(clients: &State<crate::WebsocketClients>, id: &str, message: crate::utils::structs::SSEEvent<'_>) {
-    let mut client_lock = clients.lock().await;
+pub async fn broadcast(sse_clients: &State<crate::SSEClients>, id: &str, message: crate::utils::structs::SSEEvent<'_>) {
+    let mut client_lock = sse_clients.lock().await;
 
     client_lock.retain(|client| {
         if id == client.0 { client.1.send(Event::json(&message)).is_ok() } else { true }

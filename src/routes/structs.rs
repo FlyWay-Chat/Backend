@@ -20,14 +20,14 @@ use rocket::serde::{Deserialize, Serialize};
 
 /* account.rs */
 
-/* /signin */
+/* POST /signin */
 /* body */
 #[derive(Deserialize)]
 #[serde(crate = "rocket::serde")]
-pub struct SigninBody<'r> {
-    pub email: &'r str,
-    pub password: &'r str,
-    pub otp: Option<&'r str>,
+pub struct SigninBody {
+    pub email: String,
+    pub password: String,
+    pub otp: Option<String>,
 }
 /* response */
 #[derive(Serialize)]
@@ -36,28 +36,88 @@ pub struct SigninResp {
     pub token: String,
 }
 
-/* /signup */
+/* POST /signup */
 /* body */
 #[derive(Deserialize)]
 #[serde(crate = "rocket::serde")]
-pub struct SignupBody<'r> {
-    pub email: &'r str,
-    pub username: &'r str,
-    pub password: &'r str,
+pub struct SignupBody {
+    pub email: String,
+    pub username: String,
+    pub password: String,
 }
 
-/* /reset/request */
+/* POST /reset/request */
 /* body */
 #[derive(Deserialize)]
 #[serde(crate = "rocket::serde")]
-pub struct ResetRequestBody<'r> {
-    pub email: &'r str,
+pub struct ResetRequestBody {
+    pub email: String,
 }
 
-/* /reset/<code> */
+/* POST /reset/<code> */
 /* body */
 #[derive(Deserialize)]
 #[serde(crate = "rocket::serde")]
-pub struct ResetBody<'r> {
-    pub password: &'r str,
+pub struct ResetBody {
+    pub password: String,
+}
+
+
+
+/* users.rs */
+
+/* GET /users/@me */
+/* response */
+#[derive(Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct ReturnedUserMe {
+    pub id: String,
+    pub email: String,
+    pub username: String,
+    pub discriminator: String,
+    pub avatar: Option<String>,
+    pub about: Option<String>,
+    pub creation: i64,
+    pub tfa: bool,
+}
+
+/* PATCH /users/@me */
+/* body */
+#[derive(Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct PatchMeBody {
+    pub current_password: String,
+    pub password: Option<String>,
+    pub username: Option<String>,
+    pub email: Option<String>,
+    pub discriminator: Option<String>,
+    pub about: Option<String>,
+}
+
+/* GET /users/@me/guilds */
+/* response */
+#[derive(Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct ReturnedGuild {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+    pub public: bool,
+    pub roles: Vec<rocket::serde::json::Value>,
+    pub members: usize,
+    pub creation: i64,
+}
+
+/* GET /users/<user_id> */
+/* response */
+#[derive(Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct ReturnedUser {
+    pub id: String,
+    pub username: String,
+    pub discriminator: String,
+    pub avatar: Option<String>,
+    pub about: Option<String>,
+    pub creation: i64,
 }
