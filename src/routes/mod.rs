@@ -16,17 +16,19 @@ You should have received a copy of the GNU Affero General Public License
 along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+use crate::utils;
+
 pub mod structs;
 
 pub mod account;
-pub mod users;
 pub mod experimenting;
+pub mod users;
 
 // Return routes
 pub fn get_routes() -> Vec<rocket::Route> {
     let mut routes = Vec::new();
-    routes.extend(crate::utils::sse::get_route());
-    
+    routes.extend(utils::sse::get_route());
+
     routes.extend(experimenting::get_routes());
     routes.extend(account::get_routes());
     routes.extend(users::get_routes());

@@ -16,8 +16,9 @@ You should have received a copy of the GNU Affero General Public License
 along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-use rocket::serde::Serialize;
 use crate::routes::structs::ReturnedUserMe;
+
+use rocket::serde::Serialize;
 
 #[derive(Serialize)]
 #[serde(crate = "rocket::serde")]
@@ -43,7 +44,7 @@ pub struct SSEEvent<'r> {
     pub message: Option<&'r str>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub invite: Option<&'r str>
+    pub invite: Option<&'r str>,
 }
 
 impl Default for SSEEvent<'_> {
@@ -56,7 +57,7 @@ impl Default for SSEEvent<'_> {
             member: None,
             channel: None,
             message: None,
-            invite: None
+            invite: None,
         }
     }
 }

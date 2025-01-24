@@ -17,6 +17,7 @@ along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 */
 
 use rocket::tokio;
+use std::env;
 use tokio_postgres::{Client, Error, NoTls};
 
 pub async fn connect() -> Result<Client, Error> {
@@ -24,10 +25,10 @@ pub async fn connect() -> Result<Client, Error> {
     let (client, connection) = tokio_postgres::connect(
         &format!(
             "host={} port={} dbname={} user={}",
-            std::env::var("DB_HOST").unwrap(),
-            std::env::var("DB_PORT").unwrap(),
-            std::env::var("DB_NAME").unwrap(),
-            std::env::var("DB_USER").unwrap()
+            env::var("DB_HOST").unwrap(),
+            env::var("DB_PORT").unwrap(),
+            env::var("DB_NAME").unwrap(),
+            env::var("DB_USER").unwrap()
         ),
         NoTls,
     )

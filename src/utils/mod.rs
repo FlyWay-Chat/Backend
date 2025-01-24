@@ -18,6 +18,6 @@ along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 
 pub mod structs;
 
-pub mod sse;
-pub mod database;
 pub mod account;
+pub mod database;
+pub mod sse;

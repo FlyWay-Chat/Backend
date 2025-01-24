@@ -16,10 +16,12 @@ You should have received a copy of the GNU Affero General Public License
 along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-use rocket::http::Status;
-use rocket::request::{FromRequest, Outcome, Request};
-use rocket::response::{Result, Responder, stream::Event};
-use rocket::tokio::sync::{mpsc, Mutex};
+use rocket::{
+    http::Status,
+    request::{FromRequest, Outcome, Request},
+    response::{stream::Event, Responder, Result},
+    tokio::sync::{mpsc, Mutex},
+};
 use std::sync::Arc;
 use tokio_postgres::Client;
 
@@ -38,7 +40,9 @@ impl<'r> FromRequest<'r> for Auth {
     type Error = ();
 
     async fn from_request(request: &'r Request<'_>) -> Outcome<Auth, ()> {
-        let token = request.headers().get_one("Authorization").unwrap().split_whitespace().collect::<Vec<&str>>()[1];
+        let auth_header = request.headers().get_one("Authorization").unwrap_or("");
+        let parts: Vec<&str> = auth_header.split_whitespace().collect();
+        let token = parts.last().unwrap_or(&"");
 
         if !utils::account::validate_token(token) {
             return Outcome::Forward(Status::Unauthorized);

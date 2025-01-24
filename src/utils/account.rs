@@ -16,11 +16,13 @@ You should have received a copy of the GNU Affero General Public License
 along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-use std::time::{SystemTime, UNIX_EPOCH};
-use totp_rs::{Rfc6238, Secret, TOTP};
-
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use rocket::serde::{Deserialize, Serialize};
+use std::{
+    env,
+    time::{SystemTime, UNIX_EPOCH},
+};
+use totp_rs::{Rfc6238, Secret, TOTP};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(crate = "rocket::serde")]
@@ -40,7 +42,7 @@ pub fn generate_token(id: String) -> Result<String, jsonwebtoken::errors::Error>
             .as_secs()
             + 604_800, /* 7d */
     };
-    let jwt_key = std::env::var("JWT_KEY").unwrap();
+    let jwt_key = env::var("JWT_KEY").unwrap();
     let key = jwt_key.as_bytes();
 
     let header = Header {
@@ -58,7 +60,7 @@ pub fn generate_token(id: String) -> Result<String, jsonwebtoken::errors::Error>
 }
 
 pub fn validate_token(token: &str) -> bool {
-    let jwt_key = std::env::var("JWT_KEY").unwrap();
+    let jwt_key = env::var("JWT_KEY").unwrap();
     let key = jwt_key.as_bytes();
 
     return decode::<Claims>(
@@ -80,15 +82,15 @@ pub fn verify_otp(secret: &str, code_to_check: &str) -> bool {
 }
 
 // TODO: Generate random discriminators
-pub fn generate_discriminator(excluded: &[&str]) -> Option<String> {
+pub fn generate_discriminator(excluded: &[String]) -> Option<String> {
     if excluded.len() >= 10_000 {
         return None;
     }
-    
+
     for i in 0..10_000 {
         let padded = format!("{:0>4}", i);
 
-        if !excluded.contains(&padded.as_str()) {
+        if !excluded.contains(&padded) {
             return Some(padded);
         }
     }

@@ -62,11 +62,9 @@ pub struct ResetBody {
     pub password: String,
 }
 
-
-
 /* users.rs */
 
-/* GET /users/@me */
+/* GET /users/@me || PATCH /users/@me */
 /* response */
 #[derive(Serialize)]
 #[serde(crate = "rocket::serde")]
@@ -120,4 +118,23 @@ pub struct ReturnedUser {
     pub avatar: Option<String>,
     pub about: Option<String>,
     pub creation: i64,
+}
+
+/* POST /users/@me/otp */
+/* response */
+#[derive(Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct ReturnedOtp {
+    pub secret: String,
+    pub uri: String,
+    pub qr: String,
+}
+
+/* POST /users/@me/otp/<code> || DELETE /users/@me/otp */
+/* body */
+#[derive(Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct SetupOTPBody {
+    pub password: String,
+    pub otp: String,
 }

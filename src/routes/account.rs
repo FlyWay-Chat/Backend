@@ -16,16 +16,16 @@ You should have received a copy of the GNU Affero General Public License
 along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+use super::structs::{ResetBody, ResetRequestBody, SigninBody, SigninResp, SignupBody};
+use crate::{utils, AppError};
+
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
-use rocket::serde::json::Json;
-use rocket::{http::Status, Route, State};
-
-use crate::{utils, AppError};
-
-use super::structs::{SigninBody, SigninResp, SignupBody, ResetRequestBody, ResetBody};
+use rocket::{http::Status, serde::json::Json, Route, State};
+use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
 #[post("/signin", format = "json", data = "<body>")]
 async fn signin(
@@ -47,7 +47,7 @@ async fn signin(
     if Argon2::default()
         .verify_password(
             body.password.as_bytes(),
-            &PasswordHash::new(&user.get::<&str, &str>("password")).unwrap(),
+            &PasswordHash::new(&user.get::<&str, String>("password")).unwrap(),
         )
         .is_err()
     {
@@ -60,16 +60,23 @@ async fn signin(
     }
 
     // Verify OTP
-    let tfa_secret = &user.try_get::<&str, &str>("otp");
-    if !tfa_secret.is_err() && !utils::account::verify_otp(tfa_secret.as_ref().unwrap(), &body.otp.clone().unwrap_or(String::new())) {
+    let tfa_secret = &user.try_get::<&str, String>("otp");
+    if !tfa_secret.is_err()
+        && !utils::account::verify_otp(
+            tfa_secret.as_ref().unwrap(),
+            &body.otp.clone().unwrap_or(String::new()),
+        )
+    {
         return Err(AppError(Status::Unauthorized));
     }
 
-    let mut token = user.try_get::<&str, String>("token").unwrap_or(String::new());
+    let mut token = user
+        .try_get::<&str, String>("token")
+        .unwrap_or(String::new());
 
     // Generate token if not exists
     if !utils::account::validate_token(token.as_str()) {
-        token = utils::account::generate_token(user.get::<&str, uuid::Uuid>("id").to_string()).unwrap();
+        token = utils::account::generate_token(user.get::<&str, Uuid>("id").to_string()).unwrap();
         database
             .execute(
                 "UPDATE users SET token = $1 WHERE email = $2",
@@ -103,8 +110,8 @@ async fn signup(
         } else {
             // Delete unverified user
             database
-            .execute("DELETE FROM users WHERE email = $1", &[&body.email])
-            .await?;
+                .execute("DELETE FROM users WHERE email = $1", &[&body.email])
+                .await?;
         }
     }
 
@@ -117,8 +124,8 @@ async fn signup(
     let discriminator = utils::account::generate_discriminator(
         &same_usernames
             .iter()
-            .map(|row| row.get::<&str, &str>("discriminator"))
-            .collect::<Vec<&str>>(),
+            .map(|row| row.get::<&str, String>("discriminator"))
+            .collect::<Vec<String>>(),
     );
 
     // All discriminators are taken
@@ -127,21 +134,21 @@ async fn signup(
     }
 
     // Create user
-    let id = uuid::Uuid::new_v4();
+    let id = Uuid::new_v4();
     let password = Argon2::default()
         .hash_password(body.password.as_bytes(), &SaltString::generate(&mut OsRng))
         .unwrap()
         .to_string();
     let token = utils::account::generate_token(id.to_string()).unwrap();
-    let verificator = uuid::Uuid::new_v4().to_string();
+    let verificator = Uuid::new_v4().to_string();
 
-    database.execute("INSERT INTO users (id, token, email, password, username, discriminator, avatar, creation, type, verified, verificator) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)", &[&id, &token, &body.email, &password, &body.username, &discriminator, &"userDefault", &(std::time::SystemTime::now()
-    .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64), &"USER", &false, &verificator]).await?;
+    database.execute("INSERT INTO users (id, token, email, password, username, discriminator, avatar, creation, type, verified, verificator) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)", &[&id, &token, &body.email, &password, &body.username, &discriminator, &"userDefault", &(SystemTime::now()
+    .duration_since(UNIX_EPOCH).unwrap().as_secs() as i64), &"USER", &false, &verificator]).await?;
 
     Ok(())
 }
 
-#[post("/verify/<code>")]
+#[post("/verify/<code>", format = "json")]
 async fn verify(
     code: &str,
     database: &State<tokio_postgres::Client>,
@@ -164,7 +171,10 @@ async fn verify(
         .await?;
 
     Ok(Json(SigninResp {
-        token: pre_user.unwrap().try_get::<&str, String>("token").unwrap_or(String::new()),
+        token: pre_user
+            .unwrap()
+            .try_get::<&str, String>("token")
+            .unwrap_or(String::new()),
     }))
 }
 
@@ -182,7 +192,7 @@ async fn reset_request(
         return Err(AppError(Status::Unauthorized));
     }
 
-    let verificator = uuid::Uuid::new_v4().to_string();
+    let verificator = Uuid::new_v4().to_string();
 
     // TODO: email the verificator
 
@@ -196,11 +206,8 @@ async fn reset_request(
     Ok(())
 }
 
-#[get("/reset/<code>")]
-async fn reset_check(
-    code: &str,
-    database: &State<tokio_postgres::Client>,
-) -> Result<(), AppError> {
+#[get("/reset/<code>", format = "json")]
+async fn reset_check(code: &str, database: &State<tokio_postgres::Client>) -> Result<(), AppError> {
     // Check if user exists
     let pre_user = database
         .query_one("SELECT * FROM users WHERE verificator = $1", &[&code])
@@ -232,7 +239,8 @@ async fn reset(
 
     // Generate token
     let token =
-        utils::account::generate_token(pre_user.unwrap().get::<&str, uuid::Uuid>("id").to_string()).unwrap();
+        utils::account::generate_token(pre_user.unwrap().get::<&str, Uuid>("id").to_string())
+            .unwrap();
 
     // Hash password
     let password = Argon2::default()
@@ -247,9 +255,7 @@ async fn reset(
         )
         .await?;
 
-    Ok(Json(SigninResp {
-        token,
-    }))
+    Ok(Json(SigninResp { token }))
 }
 
 // Return routes

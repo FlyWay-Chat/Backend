@@ -16,18 +16,20 @@ You should have received a copy of the GNU Affero General Public License
 along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+use super::structs::{
+    PatchMeBody, ReturnedGuild, ReturnedOtp, ReturnedUser, ReturnedUserMe, SetupOTPBody,
+};
+use crate::{utils, AppError, Auth};
+
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
-use rocket::serde::json::Json;
-use rocket::{http::Status, Route, State};
+use rocket::{http::Status, serde::json::Json, Route, State};
+use std::collections::HashMap;
+use totp_rs::{Algorithm, Secret, TOTP};
 
-use crate::{utils, AppError, Auth};
-
-use super::structs::{PatchMeBody, ReturnedGuild, ReturnedUser, ReturnedUserMe};
-
-#[get("/users/@me")]
+#[get("/users/@me", format = "json")]
 async fn get_me(
     database: &State<tokio_postgres::Client>,
     user_id: Auth,
@@ -56,11 +58,11 @@ async fn get_me(
     }))
 }
 
-#[delete("/users/@me")]
+#[delete("/users/@me", format = "json")]
 async fn del_me(
     database: &State<tokio_postgres::Client>,
     user_id: Auth,
-) -> Result<Json<()>, AppError> {
+) -> Result<Json<HashMap<String, String>>, AppError> {
     // Delete user
     if database
         .execute(
@@ -73,7 +75,7 @@ async fn del_me(
         return Err(AppError(Status::Forbidden));
     }
 
-    Ok(Json(()))
+    Ok(Json(HashMap::new()))
 }
 
 #[patch("/users/@me", format = "json", data = "<body>")]
@@ -95,7 +97,7 @@ async fn patch_me(
     if Argon2::default()
         .verify_password(
             body.current_password.as_bytes(),
-            &PasswordHash::new(&user.get::<&str, &str>("password")).unwrap(),
+            &PasswordHash::new(&user.get::<&str, String>("password")).unwrap(),
         )
         .is_err()
     {
@@ -195,16 +197,21 @@ async fn patch_me(
     };
 
     // Broadcast userEdited event
-    utils::sse::broadcast(sse_clients, &user_id.0, utils::structs::SSEEvent {
-        event: "userEdited",
-        user: Some(&returned_user),
-        ..Default::default()
-    }).await;
+    utils::sse::broadcast(
+        sse_clients,
+        &user_id.0,
+        utils::structs::SSEEvent {
+            event: "userEdited",
+            user: Some(&returned_user),
+            ..Default::default()
+        },
+    )
+    .await;
 
     Ok(Json(returned_user))
 }
 
-#[get("/users/@me/guilds")]
+#[get("/users/@me/guilds", format = "json")]
 async fn get_my_guilds(
     database: &State<tokio_postgres::Client>,
     user_id: Auth,
@@ -245,7 +252,7 @@ async fn get_my_guilds(
     Ok(Json(returned_guilds))
 }
 
-#[get("/users/<user_id>")]
+#[get("/users/<user_id>", format = "json")]
 async fn get_user(
     user_id: &str,
     database: &State<tokio_postgres::Client>,
@@ -279,7 +286,142 @@ async fn get_user(
     }))
 }
 
+#[post("/users/@me/otp", format = "json")]
+async fn gen_otp_secret(
+    database: &State<tokio_postgres::Client>,
+    user_id: Auth,
+) -> Result<Json<ReturnedOtp>, AppError> {
+    // Get user
+    let user = database
+        .query_one(
+            "SELECT * FROM users WHERE id = $1",
+            &[&uuid::Uuid::parse_str(&user_id.0).unwrap()],
+        )
+        .await?;
+
+    // Check if user already has TFA
+    if user.try_get::<&str, String>("otp").is_ok() {
+        return Err(AppError(Status::Conflict));
+    }
+
+    // Generate TFA
+    let totp = TOTP::new(
+        Algorithm::SHA1,
+        6,
+        1,
+        30,
+        Secret::default().to_bytes().unwrap(),
+        Some("BeTalky".to_string()),
+        user.get::<&str, String>("email"),
+    )
+    .unwrap();
+
+    Ok(Json(ReturnedOtp {
+        secret: totp.get_secret_base32(),
+        uri: totp.get_url(),
+        qr: "data:image/png;base64,".to_owned() + &totp.get_qr_base64().unwrap(),
+    }))
+}
+
+#[post("/users/@me/otp/<secret>", format = "json", data = "<body>")]
+async fn setup_otp(
+    body: Json<SetupOTPBody>,
+    secret: &str,
+    database: &State<tokio_postgres::Client>,
+    user_id: Auth,
+) -> Result<Json<HashMap<String, String>>, AppError> {
+    // Get user
+    let user = database
+        .query_one(
+            "SELECT * FROM users WHERE id = $1",
+            &[&uuid::Uuid::parse_str(&user_id.0).unwrap()],
+        )
+        .await?;
+
+    // Check if password is correct
+    if Argon2::default()
+        .verify_password(
+            body.password.as_bytes(),
+            &PasswordHash::new(&user.get::<&str, String>("password")).unwrap(),
+        )
+        .is_err()
+    {
+        return Err(AppError(Status::Unauthorized));
+    }
+
+    // Check if user already has TFA
+    if user.try_get::<&str, String>("otp").is_ok() {
+        return Err(AppError(Status::Conflict));
+    }
+
+    if !utils::account::verify_otp(secret, &body.otp) {
+        return Err(AppError(Status::Unauthorized));
+    }
+
+    // Save TFA
+    database
+        .execute(
+            "UPDATE users SET otp = $1 WHERE id = $2",
+            &[&secret, &uuid::Uuid::parse_str(&user_id.0).unwrap()],
+        )
+        .await?;
+
+    Ok(Json(HashMap::new()))
+}
+
+#[delete("/users/@me/otp", format = "json", data = "<body>")]
+async fn del_otp(
+    body: Json<SetupOTPBody>,
+    database: &State<tokio_postgres::Client>,
+    user_id: Auth,
+) -> Result<Json<HashMap<String, String>>, AppError> {
+    // Get user
+    let user = database
+        .query_one(
+            "SELECT * FROM users WHERE id = $1",
+            &[&uuid::Uuid::parse_str(&user_id.0).unwrap()],
+        )
+        .await?;
+
+    // Check if password is correct
+    if Argon2::default()
+        .verify_password(
+            body.password.as_bytes(),
+            &PasswordHash::new(&user.get::<&str, String>("password")).unwrap(),
+        )
+        .is_err()
+    {
+        return Err(AppError(Status::Unauthorized));
+    }
+
+    // Verify OTP
+    let tfa_secret = &user.try_get::<&str, String>("otp");
+    if !tfa_secret.is_err() && !utils::account::verify_otp(tfa_secret.as_ref().unwrap(), &body.otp)
+    {
+        return Err(AppError(Status::Unauthorized));
+    }
+
+    // Delete TFA
+    database
+        .execute(
+            "UPDATE users SET otp = NULL WHERE id = $1",
+            &[&uuid::Uuid::parse_str(&user_id.0).unwrap()],
+        )
+        .await?;
+
+    Ok(Json(HashMap::new()))
+}
+
 // Return routes
 pub fn get_routes() -> Vec<Route> {
-    routes![get_me, del_me, patch_me, get_my_guilds, get_user]
+    routes![
+        get_me,
+        del_me,
+        patch_me,
+        get_my_guilds,
+        get_user,
+        gen_otp_secret,
+        setup_otp,
+        del_otp
+    ]
 }
