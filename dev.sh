@@ -1,4 +1,4 @@
-# Copyright (C) 2024  TinyBlueSapling
+# Copyright (C) 2024-2025  TinyBlueSapling
 # This file is part of BeTalky.
 # 
 # BeTalky is free software: you can redistribute it and/or modify

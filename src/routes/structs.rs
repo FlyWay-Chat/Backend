@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2024  TinyBlueSapling
+Copyright (C) 2024-2025  TinyBlueSapling
 This file is part of BeTalky.
 
 BeTalky is free software: you can redistribute it and/or modify
@@ -16,7 +16,19 @@ You should have received a copy of the GNU Affero General Public License
 along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-use rocket::serde::{Deserialize, Serialize};
+use rocket::serde::{Deserialize, Serialize, json::Json};
+
+/* NOT ORGANISED */
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct Role {
+    pub id: String,
+    pub name: String,
+    pub color: Option<String>,
+    pub hoist: bool,
+    pub permissions: usize,
+}
+
 
 /* account.rs */
 
@@ -62,6 +74,7 @@ pub struct ResetBody {
     pub password: String,
 }
 
+
 /* users.rs */
 
 /* GET /users/@me || PATCH /users/@me */
@@ -102,7 +115,7 @@ pub struct ReturnedGuild {
     pub description: Option<String>,
     pub icon: Option<String>,
     pub public: bool,
-    pub roles: Vec<rocket::serde::json::Value>,
+    pub roles: Vec<Role>,
     pub members: usize,
     pub creation: i64,
 }
@@ -138,3 +151,6 @@ pub struct SetupOTPBody {
     pub password: String,
     pub otp: String,
 }
+
+
+/* guilds.rs */

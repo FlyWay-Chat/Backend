@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2024  TinyBlueSapling
+Copyright (C) 2024-2025  TinyBlueSapling
 This file is part of BeTalky.
 
 BeTalky is free software: you can redistribute it and/or modify
@@ -17,7 +17,7 @@ along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 */
 
 use super::structs::{
-    PatchMeBody, ReturnedGuild, ReturnedOtp, ReturnedUser, ReturnedUserMe, SetupOTPBody,
+    PatchMeBody, ReturnedGuild, ReturnedOtp, ReturnedUser, ReturnedUserMe, Role, SetupOTPBody
 };
 use crate::{utils, AppError, Auth};
 
@@ -25,7 +25,7 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
-use rocket::{http::Status, serde::json::Json, Route, State};
+use rocket::{http::Status, serde::json::{Json, serde_json, Value}, Route, State};
 use std::collections::HashMap;
 use totp_rs::{Algorithm, Secret, TOTP};
 
@@ -241,7 +241,7 @@ async fn get_my_guilds(
                 .try_get::<&str, Option<String>>("icon")
                 .unwrap_or(None),
             public: guild.get::<&str, bool>("public"),
-            roles: guild.get::<&str, Vec<rocket::serde::json::Value>>("roles"),
+            roles: serde_json::from_value(Value::Array(guild.get::<&str, Vec<rocket::serde::json::Value>>("roles"))).unwrap(),
             members: guild
                 .get::<&str, Vec<rocket::serde::json::Value>>("members")
                 .len(),

@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2024  TinyBlueSapling
+Copyright (C) 2024-2025  TinyBlueSapling
 This file is part of BeTalky.
 
 BeTalky is free software: you can redistribute it and/or modify
@@ -23,6 +23,7 @@ pub mod structs;
 pub mod account;
 pub mod experimenting;
 pub mod users;
+pub mod guilds;
 
 // Return routes
 pub fn get_routes() -> Vec<rocket::Route> {
@@ -32,6 +33,7 @@ pub fn get_routes() -> Vec<rocket::Route> {
     routes.extend(experimenting::get_routes());
     routes.extend(account::get_routes());
     routes.extend(users::get_routes());
+    routes.extend(guilds::get_routes());
 
     routes
 }
