@@ -16,7 +16,7 @@ You should have received a copy of the GNU Affero General Public License
 along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-use crate::routes::structs::ReturnedUserMe;
+use crate::routes::structs::{ReturnedGuild, ReturnedUserMe};
 
 use rocket::serde::Serialize;
 
@@ -36,7 +36,10 @@ pub struct SSEEvent<'r> {
     pub user: Option<&'r ReturnedUserMe>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub guild: Option<&'r str>,
+    pub guild: Option<&'r ReturnedGuild>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub guild_id: Option<&'r str>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<&'r str>,
@@ -60,6 +63,7 @@ impl Default for SSEEvent<'_> {
             event: "unknown",
             user: None,
             guild: None,
+            guild_id: None,
             role: None,
             member: None,
             channel: None,

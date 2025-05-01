@@ -17,14 +17,14 @@ along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 */
 
 use super::structs::{Channel, ChannelRole, CreateGuildBody, Guild, Member, PatchGuildBody, ReturnedGuild, Role};
-use crate::{to_json_array, utils::permissions::{check_guild_permission, GuildPermissions}, AppError, Auth};
+use crate::{to_json_array, utils::{self, permissions::{check_guild_permission, GuildPermissions}}, AppError, Auth};
 
 use rocket::{
     http::Status,
-    serde::json::{serde_json, Json, Value},
+    serde::json::{from_value, serde_json, to_value, Json, Value},
     Route, State,
 };
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{collections::HashMap, time::{SystemTime, UNIX_EPOCH}};
 use uuid::Uuid;
 
 #[get("/guilds/<guild_id>", format = "json")]
@@ -46,7 +46,6 @@ async fn get_guild(
         .await;
 
     if pre_guild.is_err() {
-        println!("{:?}", pre_guild.err());
         return Err(AppError(Status::NotFound));
     }
 
@@ -63,11 +62,11 @@ async fn get_guild(
             .unwrap_or(None),
         public: guild.get::<&str, bool>("public"),
         roles: serde_json::from_value(Value::Array(
-            guild.get::<&str, Vec<rocket::serde::json::Value>>("roles"),
+            guild.get::<&str, Vec<Value>>("roles"),
         ))
         .unwrap(),
         members: guild
-            .get::<&str, Vec<rocket::serde::json::Value>>("members")
+            .get::<&str, Vec<Value>>("members")
             .len(),
         creation: guild.get::<&str, i64>("creation"),
     }))
@@ -76,6 +75,7 @@ async fn get_guild(
 #[post("/guilds", format = "json", data = "<body>")]
 async fn create_guild(
     body: Json<CreateGuildBody>,
+    sse_clients: &State<crate::SSEClients>,
     database: &State<tokio_postgres::Client>,
     user_id: Auth,
 ) -> Result<Json<ReturnedGuild>, AppError> {
@@ -130,7 +130,7 @@ async fn create_guild(
             },
         ],
         members: vec![Member {
-            id: user_id.0,
+            id: user_id.0.clone(),
             nickname: None,
             roles: vec![
                 "00000000-0000-0000-0000-000000000000".to_string(),
@@ -160,7 +160,7 @@ async fn create_guild(
         to_json_array!(&guild.invites),
     ]).await?;
 
-    Ok(Json(ReturnedGuild {
+    let returned_guild = ReturnedGuild {
         id: guild.id.to_string(),
         name: guild.name,
         description: guild.description,
@@ -169,13 +169,28 @@ async fn create_guild(
         roles: guild.roles,
         members: guild.members.len(),
         creation: guild.creation,
-    }))
+    };
+
+    // Broadcast guildJoined event
+    utils::sse::broadcast(
+        sse_clients,
+        &user_id.0,
+        utils::structs::SSEEvent {
+            event: "guildJoined",
+            guild: Some(&returned_guild),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    Ok(Json(returned_guild))
 }
 
 #[patch("/guilds/<guild_id>", format = "json", data = "<body>")]
 async fn update_guild(
     guild_id: &str,
     body: Json<PatchGuildBody>,
+    sse_clients: &State<crate::SSEClients>,
     database: &State<tokio_postgres::Client>,
     user_id: Auth,
 ) -> Result<Json<ReturnedGuild>, AppError> {
@@ -192,7 +207,6 @@ async fn update_guild(
         .await;
 
     if pre_guild.is_err() {
-        println!("{:?}", pre_guild.err());
         return Err(AppError(Status::NotFound));
     }
 
@@ -208,7 +222,7 @@ async fn update_guild(
             &[&Uuid::parse_str(guild_id).unwrap(), &user_id.0],
         ) 
         .await;
-    let mut me: Member = rocket::serde::json::from_value(pre_me.unwrap().get("member")).unwrap();
+    let mut me: Member = from_value(pre_me.unwrap().get("member")).unwrap();
 
     // Check if can manage the guild
     if !check_guild_permission(&guild, &me.id, GuildPermissions::MANAGE_GUILD) {
@@ -237,7 +251,7 @@ async fn update_guild(
             return Err(AppError(Status::NotFound));
         }
 
-        let mut new_owner: Member = rocket::serde::json::from_value(pre_new_owner.unwrap().get("member")).unwrap();
+        let mut new_owner: Member = from_value(pre_new_owner.unwrap().get("member")).unwrap();
 
         // "Move" owner role
         me.roles.retain(|x| x != "00000000-0000-0000-0000-000000000000");
@@ -253,7 +267,7 @@ async fn update_guild(
             ),
             $2
             ) WHERE id = $3",
-            &[&user_id.0, &rocket::serde::json::to_value(me).unwrap(), &uuid::Uuid::parse_str(&guild_id).unwrap()],
+            &[&user_id.0, &to_value(me).unwrap(), &uuid::Uuid::parse_str(&guild_id).unwrap()],
         ).await?;
 
         // Add ownership to the target
@@ -266,7 +280,7 @@ async fn update_guild(
             ),
             $2
             ) WHERE id = $3",
-            &[&body.owner, &rocket::serde::json::to_value(new_owner).unwrap(), &uuid::Uuid::parse_str(&guild_id).unwrap()],
+            &[&body.owner, &to_value(new_owner).unwrap(), &uuid::Uuid::parse_str(&guild_id).unwrap()],
         ).await?;
     }
 
@@ -308,7 +322,7 @@ async fn update_guild(
     ) 
     .await?;
 
-    Ok(Json(ReturnedGuild {
+    let returned_guild = ReturnedGuild {
         id: guild.get::<&str, Uuid>("id").to_string(),
         name: guild.get::<&str, String>("name"),
         description: guild
@@ -319,18 +333,99 @@ async fn update_guild(
             .unwrap_or(None),
         public: guild.get::<&str, bool>("public"),
         roles: serde_json::from_value(Value::Array(
-            guild.get::<&str, Vec<rocket::serde::json::Value>>("roles"),
+            guild.get::<&str, Vec<Value>>("roles"),
         ))
         .unwrap(),
         members: guild
-            .get::<&str, Vec<rocket::serde::json::Value>>("members")
+            .get::<&str, Vec<Value>>("members")
             .len(),
         creation: guild.get::<&str, i64>("creation"),
-    }))
+    };
+
+    let members: Vec<Member> = from_value(Value::Array(guild.get::<&str, Vec<Value>>("members"))).unwrap();
+
+    // Broadcast guildEdited event to every member
+    for member in members {
+        utils::sse::broadcast(
+            sse_clients,
+            &member.id,
+            utils::structs::SSEEvent {
+                event: "guildEdited",
+                guild: Some(&returned_guild),
+                ..Default::default()
+            },
+        ).await;
+    }
+
+    Ok(Json(returned_guild))
     
+}
+
+#[delete("/guilds/<guild_id>", format = "json")]
+async fn del_guild(
+    guild_id: &str,
+    sse_clients: &State<crate::SSEClients>,
+    database: &State<tokio_postgres::Client>,
+    user_id: Auth,
+) -> Result<Json<HashMap<String, String>>, AppError> {
+    // Get guild
+    let pre_guild = database
+        .query_one(
+            "SELECT * FROM guilds WHERE id = $1 AND EXISTS (
+               SELECT 1
+               FROM unnest(members) AS member
+               WHERE member->>'id' = $2
+           )",
+            &[&Uuid::parse_str(guild_id).unwrap(), &user_id.0],
+        ) 
+        .await;
+
+    if pre_guild.is_err() {
+        return Err(AppError(Status::NotFound));
+    }
+
+    // Get the current user
+    let pre_me = database
+        .query_one(
+            "SELECT member FROM guilds,
+            unnest(members) AS member
+            WHERE id = $1
+            AND member->>'id' = $2",
+            &[&Uuid::parse_str(guild_id).unwrap(), &user_id.0],
+        ) 
+        .await;
+    let me: Member = from_value(pre_me.unwrap().get("member")).unwrap();
+
+    // Check if owner
+    if !me.roles.contains(&"00000000-0000-0000-0000-000000000000".to_string()) {
+        return Err(AppError(Status::Forbidden));
+    }
+
+    // Delete guild
+    database.execute(
+            "DELETE FROM guilds WHERE id = $1",
+            &[&uuid::Uuid::parse_str(&guild_id).unwrap()],
+        ).await?;
+
+    let members: Vec<Member> = from_value(Value::Array(pre_guild.unwrap().get::<&str, Vec<Value>>("members"))).unwrap();
+
+    // Broadcast guildEdited event to every member
+    for member in members {
+        utils::sse::broadcast(
+            sse_clients,
+            &member.id,
+            utils::structs::SSEEvent {
+                event: "guildLeft",
+                guild_id: Some(guild_id),
+                ..Default::default()
+            },
+        ).await;
+    }
+
+    Ok(Json(HashMap::new()))
 }
 
 // Return routes
 pub fn get_routes() -> Vec<Route> {
-    routes![get_guild, create_guild, update_guild]
+    routes![get_guild, create_guild, update_guild, del_guild]
 }

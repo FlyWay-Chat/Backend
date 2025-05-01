@@ -17,7 +17,7 @@ along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 */
 
 use super::structs::{
-    PatchMeBody, ReturnedGuild, ReturnedOtp, ReturnedUser, ReturnedUserMe, Role, SetupOTPBody
+    PatchMeBody, ReturnedGuild, ReturnedOtp, ReturnedUser, ReturnedUserMe, SetupOTPBody
 };
 use crate::{utils, AppError, Auth};
 
@@ -241,9 +241,9 @@ async fn get_my_guilds(
                 .try_get::<&str, Option<String>>("icon")
                 .unwrap_or(None),
             public: guild.get::<&str, bool>("public"),
-            roles: serde_json::from_value(Value::Array(guild.get::<&str, Vec<rocket::serde::json::Value>>("roles"))).unwrap(),
+            roles: serde_json::from_value(Value::Array(guild.get::<&str, Vec<Value>>("roles"))).unwrap(),
             members: guild
-                .get::<&str, Vec<rocket::serde::json::Value>>("members")
+                .get::<&str, Vec<Value>>("members")
                 .len(),
             creation: guild.get::<&str, i64>("creation"),
         })

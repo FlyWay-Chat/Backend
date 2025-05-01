@@ -17,6 +17,7 @@ along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 */
 
 use bitflags::bitflags;
+use rocket::serde::json::{from_value, Value};
 use tokio_postgres::Row;
 
 use crate::routes::structs::{Member, Role};
@@ -39,8 +40,8 @@ bitflags! {
 
 pub fn check_guild_permission(guild: &Row, member_id: &String, permission: GuildPermissions) -> bool {
     // Get proper members and roles
-    let members: Vec<Member> = rocket::serde::json::from_value(rocket::serde::json::Value::Array(guild.get::<&str, Vec<rocket::serde::json::Value>>("members"))).unwrap();
-    let roles: Vec<Role> = rocket::serde::json::from_value(rocket::serde::json::Value::Array(guild.get::<&str, Vec<rocket::serde::json::Value>>("roles"))).unwrap();
+    let members: Vec<Member> = from_value(Value::Array(guild.get::<&str, Vec<Value>>("members"))).unwrap();
+    let roles: Vec<Role> = from_value(Value::Array(guild.get::<&str, Vec<Value>>("roles"))).unwrap();
 
     // Get the member's roles
     let member_roles_ids = members.iter().find(|x| x.id == *member_id).unwrap().roles.clone();
