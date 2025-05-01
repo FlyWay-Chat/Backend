@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2024-2025  TinyBlueSapling
+Copyright (C) 2024-2025  BeTalky Community
 This file is part of BeTalky.
 
 BeTalky is free software: you can redistribute it and/or modify
@@ -20,7 +20,14 @@ use crate::routes::structs::ReturnedUserMe;
 
 use rocket::serde::Serialize;
 
-#[derive(Serialize)]
+#[macro_export]
+macro_rules! to_json_array {
+    ($x:expr) => {
+        &$x.iter().map(|x| serde_json::to_value(x).unwrap()).collect::<Vec<serde_json::Value>>()
+    };
+}
+
+#[derive(Serialize, Debug)]
 #[serde(crate = "rocket::serde")]
 pub struct SSEEvent<'r> {
     pub event: &'r str,

@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2024-2025  TinyBlueSapling
+Copyright (C) 2024-2025  BeTalky Community
 This file is part of BeTalky.
 
 BeTalky is free software: you can redistribute it and/or modify
@@ -24,7 +24,7 @@ use std::{
 };
 use totp_rs::{Rfc6238, Secret, TOTP};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(crate = "rocket::serde")]
 struct Claims {
     sub: String,

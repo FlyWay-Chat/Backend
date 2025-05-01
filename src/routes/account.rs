@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2024-2025  TinyBlueSapling
+Copyright (C) 2024-2025  BeTalky Community
 This file is part of BeTalky.
 
 BeTalky is free software: you can redistribute it and/or modify
@@ -24,7 +24,7 @@ use argon2::{
     Argon2,
 };
 use rocket::{http::Status, serde::json::Json, Route, State};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{collections::HashMap, time::{SystemTime, UNIX_EPOCH}};
 use uuid::Uuid;
 
 #[post("/signin", format = "json", data = "<body>")]
@@ -92,7 +92,7 @@ async fn signin(
 async fn signup(
     body: Json<SignupBody>,
     database: &State<tokio_postgres::Client>,
-) -> Result<(), AppError> {
+) -> Result<Json<HashMap<String, String>>, AppError> {
     // Check if username is too long
     if body.username.len() > 30 {
         return Err(AppError(Status::BadRequest));
@@ -145,7 +145,7 @@ async fn signup(
     database.execute("INSERT INTO users (id, token, email, password, username, discriminator, avatar, creation, type, verified, verificator) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)", &[&id, &token, &body.email, &password, &body.username, &discriminator, &"userDefault", &(SystemTime::now()
     .duration_since(UNIX_EPOCH).unwrap().as_secs() as i64), &"USER", &false, &verificator]).await?;
 
-    Ok(())
+    Ok(Json(HashMap::new()))
 }
 
 #[post("/verify/<code>", format = "json")]
@@ -182,7 +182,7 @@ async fn verify(
 async fn reset_request(
     body: Json<ResetRequestBody>,
     database: &State<tokio_postgres::Client>,
-) -> Result<(), AppError> {
+) -> Result<Json<HashMap<String, String>>, AppError> {
     // Check if user exists
     let pre_user = database
         .query_one("SELECT * FROM users WHERE email = $1", &[&body.email])
@@ -203,7 +203,7 @@ async fn reset_request(
         )
         .await?;
 
-    Ok(())
+    Ok(Json(HashMap::new()))
 }
 
 #[get("/reset/<code>", format = "json")]
