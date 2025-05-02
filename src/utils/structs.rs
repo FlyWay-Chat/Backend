@@ -16,14 +16,16 @@ You should have received a copy of the GNU Affero General Public License
 along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-use crate::routes::structs::{ReturnedGuild, ReturnedUserMe};
+use crate::routes::structs::{ReturnedGuild, ReturnedUser, ReturnedUserMe};
 
 use rocket::serde::Serialize;
 
 #[macro_export]
 macro_rules! to_json_array {
     ($x:expr) => {
-        &$x.iter().map(|x| serde_json::to_value(x).unwrap()).collect::<Vec<serde_json::Value>>()
+        &$x.iter()
+            .map(|x| serde_json::to_value(x).unwrap())
+            .collect::<Vec<serde_json::Value>>()
     };
 }
 
@@ -45,7 +47,7 @@ pub struct SSEEvent<'r> {
     pub role: Option<&'r str>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub member: Option<&'r str>,
+    pub member: Option<&'r ReturnedUser>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel: Option<&'r str>,

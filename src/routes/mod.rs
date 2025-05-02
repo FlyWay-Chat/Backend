@@ -22,8 +22,8 @@ pub mod structs;
 
 pub mod account;
 pub mod experimenting;
-pub mod users;
 pub mod guilds;
+pub mod users;
 
 // Return routes
 pub fn get_routes() -> Vec<rocket::Route> {

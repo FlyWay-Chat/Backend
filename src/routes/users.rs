@@ -17,7 +17,7 @@ along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 */
 
 use super::structs::{
-    PatchMeBody, ReturnedGuild, ReturnedOtp, ReturnedUser, ReturnedUserMe, SetupOTPBody
+    PatchMeBody, ReturnedGuild, ReturnedOtp, ReturnedUser, ReturnedUserMe, SetupOTPBody,
 };
 use crate::{utils, AppError, Auth};
 
@@ -25,7 +25,11 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
-use rocket::{http::Status, serde::json::{Json, serde_json, Value}, Route, State};
+use rocket::{
+    http::Status,
+    serde::json::{serde_json, Json, Value},
+    Route, State,
+};
 use std::collections::HashMap;
 use totp_rs::{Algorithm, Secret, TOTP};
 
@@ -241,10 +245,9 @@ async fn get_my_guilds(
                 .try_get::<&str, Option<String>>("icon")
                 .unwrap_or(None),
             public: guild.get::<&str, bool>("public"),
-            roles: serde_json::from_value(Value::Array(guild.get::<&str, Vec<Value>>("roles"))).unwrap(),
-            members: guild
-                .get::<&str, Vec<Value>>("members")
-                .len(),
+            roles: serde_json::from_value(Value::Array(guild.get::<&str, Vec<Value>>("roles")))
+                .unwrap(),
+            members: guild.get::<&str, Vec<Value>>("members").len(),
             creation: guild.get::<&str, i64>("creation"),
         })
     }

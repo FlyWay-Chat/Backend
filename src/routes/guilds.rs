@@ -16,15 +16,28 @@ You should have received a copy of the GNU Affero General Public License
 along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-use super::structs::{Channel, ChannelRole, CreateGuildBody, Guild, Member, PatchGuildBody, ReturnedGuild, Role};
-use crate::{to_json_array, utils::{self, permissions::{check_guild_permission, GuildPermissions}}, AppError, Auth};
+use super::structs::{
+    Channel, ChannelRole, CreateGuildBody, Guild, Member, PatchGuildBody, ReturnedGuild, Role,
+};
+use crate::{
+    routes::structs::ReturnedUser,
+    to_json_array,
+    utils::{
+        self,
+        permissions::{check_guild_permission, GuildPermissions},
+    },
+    AppError, Auth,
+};
 
 use rocket::{
     http::Status,
     serde::json::{from_value, serde_json, to_value, Json, Value},
     Route, State,
 };
-use std::{collections::HashMap, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+    collections::HashMap,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use uuid::Uuid;
 
 #[get("/guilds/<guild_id>", format = "json")]
@@ -61,13 +74,9 @@ async fn get_guild(
             .try_get::<&str, Option<String>>("icon")
             .unwrap_or(None),
         public: guild.get::<&str, bool>("public"),
-        roles: serde_json::from_value(Value::Array(
-            guild.get::<&str, Vec<Value>>("roles"),
-        ))
-        .unwrap(),
-        members: guild
-            .get::<&str, Vec<Value>>("members")
-            .len(),
+        roles: serde_json::from_value(Value::Array(guild.get::<&str, Vec<Value>>("roles")))
+            .unwrap(),
+        members: guild.get::<&str, Vec<Value>>("members").len(),
         creation: guild.get::<&str, i64>("creation"),
     }))
 }
@@ -124,7 +133,8 @@ async fn create_guild(
             Role {
                 id: "11111111-1111-1111-1111-111111111111".to_string(),
                 name: "Members".to_string(),
-                permissions: (GuildPermissions::CREATE_INVITE | GuildPermissions::CHANGE_NICKNAME).bits(),
+                permissions: (GuildPermissions::CREATE_INVITE | GuildPermissions::CHANGE_NICKNAME)
+                    .bits(),
                 color: None,
                 hoist: false,
             },
@@ -203,7 +213,7 @@ async fn update_guild(
                WHERE member->>'id' = $2
            )",
             &[&Uuid::parse_str(guild_id).unwrap(), &user_id.0],
-        ) 
+        )
         .await;
 
     if pre_guild.is_err() {
@@ -220,7 +230,7 @@ async fn update_guild(
             WHERE id = $1
             AND member->>'id' = $2",
             &[&Uuid::parse_str(guild_id).unwrap(), &user_id.0],
-        ) 
+        )
         .await;
     let mut me: Member = from_value(pre_me.unwrap().get("member")).unwrap();
 
@@ -232,20 +242,23 @@ async fn update_guild(
     // Transferring ownership
     if body.owner.is_some() {
         // Check if owner
-        if !me.roles.contains(&"00000000-0000-0000-0000-000000000000".to_string()) {
+        if !me
+            .roles
+            .contains(&"00000000-0000-0000-0000-000000000000".to_string())
+        {
             return Err(AppError(Status::Forbidden));
         }
 
         // Check if the new owner exists
         let pre_new_owner = database
-        .query_one(
-            "SELECT member FROM guilds,
+            .query_one(
+                "SELECT member FROM guilds,
             unnest(members) AS member
             WHERE id = $1
             AND member->>'id' = $2",
-            &[&Uuid::parse_str(guild_id).unwrap(), &body.owner],
-        ) 
-        .await;
+                &[&Uuid::parse_str(guild_id).unwrap(), &body.owner],
+            )
+            .await;
 
         if pre_new_owner.is_err() {
             return Err(AppError(Status::NotFound));
@@ -254,12 +267,16 @@ async fn update_guild(
         let mut new_owner: Member = from_value(pre_new_owner.unwrap().get("member")).unwrap();
 
         // "Move" owner role
-        me.roles.retain(|x| x != "00000000-0000-0000-0000-000000000000");
-        new_owner.roles.push("00000000-0000-0000-0000-000000000000".to_string());
+        me.roles
+            .retain(|role_id| role_id != "00000000-0000-0000-0000-000000000000");
+        new_owner
+            .roles
+            .push("00000000-0000-0000-0000-000000000000".to_string());
 
         // Remove ownership from the source
-        database.execute(
-            "UPDATE guilds SET members = array_replace(members,
+        database
+            .execute(
+                "UPDATE guilds SET members = array_replace(members,
             (
             SELECT member
             FROM unnest(members) AS member
@@ -267,12 +284,18 @@ async fn update_guild(
             ),
             $2
             ) WHERE id = $3",
-            &[&user_id.0, &to_value(me).unwrap(), &uuid::Uuid::parse_str(&guild_id).unwrap()],
-        ).await?;
+                &[
+                    &user_id.0,
+                    &to_value(me).unwrap(),
+                    &uuid::Uuid::parse_str(&guild_id).unwrap(),
+                ],
+            )
+            .await?;
 
         // Add ownership to the target
-        database.execute(
-            "UPDATE guilds SET members = array_replace(members,
+        database
+            .execute(
+                "UPDATE guilds SET members = array_replace(members,
             (
             SELECT member
             FROM unnest(members) AS member
@@ -280,8 +303,13 @@ async fn update_guild(
             ),
             $2
             ) WHERE id = $3",
-            &[&body.owner, &to_value(new_owner).unwrap(), &uuid::Uuid::parse_str(&guild_id).unwrap()],
-        ).await?;
+                &[
+                    &body.owner,
+                    &to_value(new_owner).unwrap(),
+                    &uuid::Uuid::parse_str(&guild_id).unwrap(),
+                ],
+            )
+            .await?;
     }
 
     // TODO: Implement other editing
@@ -291,10 +319,15 @@ async fn update_guild(
             return Err(AppError(Status::BadRequest));
         }
 
-        database.execute(
-            "UPDATE guilds SET name = $1 WHERE id = $2",
-            &[&body.name.as_ref().unwrap(), &uuid::Uuid::parse_str(&guild_id).unwrap()],
-        ).await?;
+        database
+            .execute(
+                "UPDATE guilds SET name = $1 WHERE id = $2",
+                &[
+                    &body.name.as_ref().unwrap(),
+                    &uuid::Uuid::parse_str(&guild_id).unwrap(),
+                ],
+            )
+            .await?;
     }
 
     if body.description.is_some() {
@@ -302,25 +335,35 @@ async fn update_guild(
             return Err(AppError(Status::BadRequest));
         }
 
-        database.execute(
-            "UPDATE guilds SET description = $1 WHERE id = $2",
-            &[&body.description.as_ref().unwrap(), &uuid::Uuid::parse_str(&guild_id).unwrap()],
-        ).await?;
+        database
+            .execute(
+                "UPDATE guilds SET description = $1 WHERE id = $2",
+                &[
+                    &body.description.as_ref().unwrap(),
+                    &uuid::Uuid::parse_str(&guild_id).unwrap(),
+                ],
+            )
+            .await?;
     }
 
     if body.public.is_some() {
-        database.execute(
-            "UPDATE guilds SET public = $1 WHERE id = $2",
-            &[&body.public.as_ref().unwrap(), &uuid::Uuid::parse_str(&guild_id).unwrap()],
-        ).await?;
+        database
+            .execute(
+                "UPDATE guilds SET public = $1 WHERE id = $2",
+                &[
+                    &body.public.as_ref().unwrap(),
+                    &uuid::Uuid::parse_str(&guild_id).unwrap(),
+                ],
+            )
+            .await?;
     }
 
     guild = database
-    .query_one(
-        "SELECT * FROM guilds WHERE id = $1",
-        &[&Uuid::parse_str(guild_id).unwrap()],
-    ) 
-    .await?;
+        .query_one(
+            "SELECT * FROM guilds WHERE id = $1",
+            &[&Uuid::parse_str(guild_id).unwrap()],
+        )
+        .await?;
 
     let returned_guild = ReturnedGuild {
         id: guild.get::<&str, Uuid>("id").to_string(),
@@ -332,17 +375,14 @@ async fn update_guild(
             .try_get::<&str, Option<String>>("icon")
             .unwrap_or(None),
         public: guild.get::<&str, bool>("public"),
-        roles: serde_json::from_value(Value::Array(
-            guild.get::<&str, Vec<Value>>("roles"),
-        ))
-        .unwrap(),
-        members: guild
-            .get::<&str, Vec<Value>>("members")
-            .len(),
+        roles: serde_json::from_value(Value::Array(guild.get::<&str, Vec<Value>>("roles")))
+            .unwrap(),
+        members: guild.get::<&str, Vec<Value>>("members").len(),
         creation: guild.get::<&str, i64>("creation"),
     };
 
-    let members: Vec<Member> = from_value(Value::Array(guild.get::<&str, Vec<Value>>("members"))).unwrap();
+    let members: Vec<Member> =
+        from_value(Value::Array(guild.get::<&str, Vec<Value>>("members"))).unwrap();
 
     // Broadcast guildEdited event to every member
     for member in members {
@@ -354,11 +394,11 @@ async fn update_guild(
                 guild: Some(&returned_guild),
                 ..Default::default()
             },
-        ).await;
+        )
+        .await;
     }
 
     Ok(Json(returned_guild))
-    
 }
 
 #[delete("/guilds/<guild_id>", format = "json")]
@@ -377,7 +417,7 @@ async fn del_guild(
                WHERE member->>'id' = $2
            )",
             &[&Uuid::parse_str(guild_id).unwrap(), &user_id.0],
-        ) 
+        )
         .await;
 
     if pre_guild.is_err() {
@@ -392,22 +432,30 @@ async fn del_guild(
             WHERE id = $1
             AND member->>'id' = $2",
             &[&Uuid::parse_str(guild_id).unwrap(), &user_id.0],
-        ) 
+        )
         .await;
     let me: Member = from_value(pre_me.unwrap().get("member")).unwrap();
 
     // Check if owner
-    if !me.roles.contains(&"00000000-0000-0000-0000-000000000000".to_string()) {
+    if !me
+        .roles
+        .contains(&"00000000-0000-0000-0000-000000000000".to_string())
+    {
         return Err(AppError(Status::Forbidden));
     }
 
     // Delete guild
-    database.execute(
+    database
+        .execute(
             "DELETE FROM guilds WHERE id = $1",
             &[&uuid::Uuid::parse_str(&guild_id).unwrap()],
-        ).await?;
+        )
+        .await?;
 
-    let members: Vec<Member> = from_value(Value::Array(pre_guild.unwrap().get::<&str, Vec<Value>>("members"))).unwrap();
+    let members: Vec<Member> = from_value(Value::Array(
+        pre_guild.unwrap().get::<&str, Vec<Value>>("members"),
+    ))
+    .unwrap();
 
     // Broadcast guildEdited event to every member
     for member in members {
@@ -419,13 +467,164 @@ async fn del_guild(
                 guild_id: Some(guild_id),
                 ..Default::default()
             },
-        ).await;
+        )
+        .await;
     }
 
     Ok(Json(HashMap::new()))
 }
 
+#[get("/guilds/<guild_id>/bans", format = "json")]
+async fn get_guild_bans(
+    guild_id: &str,
+    database: &State<tokio_postgres::Client>,
+    user_id: Auth,
+) -> Result<Json<Vec<ReturnedUser>>, AppError> {
+    // Get guild
+    let pre_guild = database
+        .query_one(
+            "SELECT * FROM guilds WHERE id = $1 AND EXISTS (
+               SELECT 1
+               FROM unnest(members) AS member
+               WHERE member->>'id' = $2
+           )",
+            &[&Uuid::parse_str(guild_id).unwrap(), &user_id.0],
+        )
+        .await;
+
+    if pre_guild.is_err() {
+        return Err(AppError(Status::NotFound));
+    }
+
+    let guild = pre_guild.unwrap();
+
+    // Check if can manage the guild's bans
+    if !check_guild_permission(&guild, &user_id.0, GuildPermissions::BAN_MEMBERS) {
+        return Err(AppError(Status::Forbidden));
+    }
+
+    let users = database
+        .query(
+            "SELECT * FROM users WHERE id = any($1)",
+            &[
+                &from_value::<Vec<Uuid>>(Value::Array(guild.get::<&str, Vec<Value>>("bans")))
+                    .unwrap(),
+            ],
+        )
+        .await?;
+
+    Ok(Json(
+        users
+            .iter()
+            .map(|user| ReturnedUser {
+                id: user.get::<&str, uuid::Uuid>("id").to_string(),
+                username: user.get::<&str, String>("username"),
+                discriminator: user.get::<&str, String>("discriminator"),
+                avatar: user
+                    .try_get::<&str, Option<String>>("avatar")
+                    .unwrap_or(None),
+                about: user
+                    .try_get::<&str, Option<String>>("about")
+                    .unwrap_or(None),
+                creation: user.get::<&str, i64>("creation"),
+            })
+            .collect(),
+    ))
+}
+
+#[delete("/guilds/<guild_id>/bans/<banned_id>", format = "json")]
+async fn del_guild_ban(
+    guild_id: &str,
+    banned_id: &str,
+    sse_clients: &State<crate::SSEClients>,
+    database: &State<tokio_postgres::Client>,
+    user_id: Auth,
+) -> Result<Json<ReturnedUser>, AppError> {
+    // Get guild
+    let pre_guild = database
+        .query_one(
+            "SELECT * FROM guilds WHERE id = $1 AND EXISTS (
+               SELECT 1
+               FROM unnest(members) AS member
+               WHERE member->>'id' = $2
+           )",
+            &[&Uuid::parse_str(guild_id).unwrap(), &user_id.0],
+        )
+        .await;
+
+    if pre_guild.is_err() {
+        return Err(AppError(Status::NotFound));
+    }
+
+    let guild = pre_guild.unwrap();
+
+    // Check if can manage the guild's bans
+    if !check_guild_permission(&guild, &user_id.0, GuildPermissions::BAN_MEMBERS) {
+        return Err(AppError(Status::Forbidden));
+    }
+
+    // Unban user
+    database
+        .execute(
+            "UPDATE guilds SET bans = array_remove(bans, $1) WHERE id = $2",
+            &[
+                &to_value(banned_id).unwrap(),
+                &uuid::Uuid::parse_str(&guild_id).unwrap(),
+            ],
+        )
+        .await?;
+
+    let user = database
+        .query_one(
+            "SELECT * FROM users WHERE id = $1",
+            &[&uuid::Uuid::parse_str(&banned_id).unwrap()],
+        )
+        .await?;
+
+    let returned_user = ReturnedUser {
+        id: user.get::<&str, uuid::Uuid>("id").to_string(),
+        username: user.get::<&str, String>("username"),
+        discriminator: user.get::<&str, String>("discriminator"),
+        avatar: user
+            .try_get::<&str, Option<String>>("avatar")
+            .unwrap_or(None),
+        about: user
+            .try_get::<&str, Option<String>>("about")
+            .unwrap_or(None),
+        creation: user.get::<&str, i64>("creation"),
+    };
+
+    let members: Vec<Member> =
+        from_value(Value::Array(guild.get::<&str, Vec<Value>>("members"))).unwrap();
+
+    // Broadcast memberUnbanned event to every member that can ban others
+    for member in members {
+        if check_guild_permission(&guild, &member.id, GuildPermissions::BAN_MEMBERS) {
+            utils::sse::broadcast(
+                sse_clients,
+                &member.id,
+                utils::structs::SSEEvent {
+                    event: "memberUnbanned",
+                    guild_id: Some(guild_id),
+                    member: Some(&returned_user),
+                    ..Default::default()
+                },
+            )
+            .await;
+        }
+    }
+
+    Ok(Json(returned_user))
+}
+
 // Return routes
 pub fn get_routes() -> Vec<Route> {
-    routes![get_guild, create_guild, update_guild, del_guild]
+    routes![
+        get_guild,
+        create_guild,
+        update_guild,
+        del_guild,
+        get_guild_bans,
+        del_guild_ban
+    ]
 }

@@ -24,7 +24,10 @@ use argon2::{
     Argon2,
 };
 use rocket::{http::Status, serde::json::Json, Route, State};
-use std::{collections::HashMap, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+    collections::HashMap,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use uuid::Uuid;
 
 #[post("/signin", format = "json", data = "<body>")]

@@ -38,16 +38,29 @@ bitflags! {
     }
 }
 
-pub fn check_guild_permission(guild: &Row, member_id: &String, permission: GuildPermissions) -> bool {
+pub fn check_guild_permission(
+    guild: &Row,
+    member_id: &String,
+    permission: GuildPermissions,
+) -> bool {
     // Get proper members and roles
-    let members: Vec<Member> = from_value(Value::Array(guild.get::<&str, Vec<Value>>("members"))).unwrap();
-    let roles: Vec<Role> = from_value(Value::Array(guild.get::<&str, Vec<Value>>("roles"))).unwrap();
+    let members: Vec<Member> =
+        from_value(Value::Array(guild.get::<&str, Vec<Value>>("members"))).unwrap();
+    let roles: Vec<Role> =
+        from_value(Value::Array(guild.get::<&str, Vec<Value>>("roles"))).unwrap();
 
     // Get the member's roles
-    let member_roles_ids = members.iter().find(|x| x.id == *member_id).unwrap().roles.clone();
-    let mut member_roles = roles.iter().filter(|x| member_roles_ids.contains(&x.id));
+    let member_roles_ids = members
+        .iter()
+        .find(|member| member.id == *member_id)
+        .unwrap()
+        .roles
+        .clone();
+    let mut member_roles = roles
+        .iter()
+        .filter(|role| member_roles_ids.contains(&role.id));
 
     // Check for the permission in every role, and return
-    member_roles.any(|x| GuildPermissions::from_bits_truncate(x.permissions).contains(permission))
-
+    member_roles
+        .any(|role| GuildPermissions::from_bits_truncate(role.permissions).contains(permission))
 }

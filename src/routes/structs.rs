@@ -62,7 +62,6 @@ pub struct ResetBody {
     pub password: String,
 }
 
-
 /* users.rs */
 
 /* GET /users/@me || PATCH /users/@me */
@@ -139,7 +138,6 @@ pub struct SetupOTPBody {
     pub password: String,
     pub otp: String,
 }
-
 
 /* guilds.rs */
 

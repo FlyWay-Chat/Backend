@@ -28,6 +28,6 @@ tokio-postgres = { version = "0.7.13", features = ["with-uuid-1", "with-serde_js
 argon2 = "0.5.3"
 totp-rs = { version = "5.7.0", features = ["otpauth", "gen_secret", "qr"] }
 jsonwebtoken = "9.3.1"
-uuid = { version = "1.16.0", features = ["v4"] }
+uuid = { version = "1.16.0", features = ["v4", "serde"] }
 rand = "0.9.1"
 bitflags = { version = "2.9.0" }
