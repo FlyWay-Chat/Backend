@@ -20,7 +20,7 @@ use bitflags::bitflags;
 use rocket::serde::json::{from_value, Value};
 use tokio_postgres::Row;
 
-use crate::routes::structs::{Member, Role};
+use crate::routes::structs::{Channel, Member, Role};
 
 bitflags! {
     #[derive(Copy, Clone, Debug)]
@@ -33,6 +33,18 @@ bitflags! {
         const KICK_MEMBERS = 1 << 5;
         const BAN_MEMBERS = 1 << 6;
         const MANAGE_GUILD = 1 << 7;
+
+        const ADMINISTRATOR = !0;
+    }
+}
+
+bitflags! {
+    #[derive(Copy, Clone, Debug)]
+    pub struct ChannelPermissions: usize {
+        const VIEW_CHANNEL = 1 << 0;
+        const SEND_MESSAGES = 1 << 1;
+        const MANAGE_CHANNEL = 1 << 2;
+        const MANAGE_MESSAGES = 1 << 3;
 
         const ADMINISTRATOR = !0;
     }
@@ -63,4 +75,32 @@ pub fn check_guild_permission(
     // Check for the permission in every role, and return
     member_roles
         .any(|role| GuildPermissions::from_bits_truncate(role.permissions).contains(permission))
+}
+
+pub fn check_channel_permission(
+    guild: &Row,
+    channel_id: &String,
+    member_id: &String,
+    permission: ChannelPermissions,
+) -> bool {
+    // Get proper members and channel
+    let members: Vec<Member> =
+        from_value(Value::Array(guild.get::<&str, Vec<Value>>("members"))).unwrap();
+    let channels: Vec<Channel> = from_value(Value::Array(guild.get::<&str, Vec<Value>>("channels"))).unwrap();
+    let channel = channels.iter().find(|channel| channel.id == *channel_id).unwrap();
+
+    // Get the member's roles
+    let member_roles_ids = members
+        .iter()
+        .find(|member| member.id == *member_id)
+        .unwrap()
+        .roles
+        .clone();
+    let mut member_channel_roles = channel.roles
+        .iter()
+        .filter(|role| member_roles_ids.contains(&role.id));
+
+    // Check for the permission in every role, and return
+    member_channel_roles
+        .any(|role| ChannelPermissions::from_bits_truncate(role.permissions).contains(permission))
 }

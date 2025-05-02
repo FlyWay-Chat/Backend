@@ -24,7 +24,7 @@ use crate::{
     to_json_array,
     utils::{
         self,
-        permissions::{check_guild_permission, GuildPermissions},
+        permissions::{check_guild_permission, ChannelPermissions, GuildPermissions},
     },
     AppError, Auth,
 };
@@ -112,11 +112,11 @@ async fn create_guild(
             roles: vec![
                 ChannelRole {
                     id: "00000000-0000-0000-0000-000000000000".to_string(),
-                    permissions: 1, // TODO: Add owner permissions
+                    permissions: ChannelPermissions::ADMINISTRATOR.bits(),
                 },
                 ChannelRole {
                     id: "11111111-1111-1111-1111-111111111111".to_string(),
-                    permissions: 0, // TODO: Add member permissions
+                    permissions: (ChannelPermissions::VIEW_CHANNEL | ChannelPermissions::SEND_MESSAGES).bits(),
                 },
             ],
             messages: vec![],
@@ -311,8 +311,6 @@ async fn update_guild(
             )
             .await?;
     }
-
-    // TODO: Implement other editing
 
     if body.name.is_some() {
         if body.name.as_ref().unwrap().len() > 30 {
