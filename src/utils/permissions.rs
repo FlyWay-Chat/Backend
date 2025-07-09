@@ -1,19 +1,19 @@
 /*
-Copyright (C) 2025  BeTalky Community
-This file is part of BeTalky.
+Copyright (C) 2025  FlyWay Chat
+This file is part of FlyWay Chat.
 
-BeTalky is free software: you can redistribute it and/or modify
+FlyWay Chat is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
-BeTalky is distributed in the hope that it will be useful,
+FlyWay Chat is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
-along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
+along with FlyWay Chat.  If not, see <https://www.gnu.org/licenses/>.
 */
 
 use bitflags::bitflags;
@@ -24,7 +24,7 @@ use crate::routes::structs::{Channel, Member, Role};
 
 bitflags! {
     #[derive(Copy, Clone, Debug)]
-    pub struct GuildPermissions: usize {
+    pub struct GuildPermissions: i64 {
         const CREATE_INVITE = 1 << 0;
         const CHANGE_NICKNAME = 1 << 1;
         const MANAGE_NICKNAMES = 1 << 2;
@@ -40,7 +40,7 @@ bitflags! {
 
 bitflags! {
     #[derive(Copy, Clone, Debug)]
-    pub struct ChannelPermissions: usize {
+    pub struct ChannelPermissions: i64 {
         const VIEW_CHANNEL = 1 << 0;
         const SEND_MESSAGES = 1 << 1;
         const MANAGE_CHANNEL = 1 << 2;

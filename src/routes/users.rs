@@ -1,19 +1,19 @@
 /*
-Copyright (C) 2024-2025  BeTalky Community
-This file is part of BeTalky.
+Copyright (C) 2024-2025  FlyWay Chat
+This file is part of FlyWay Chat.
 
-BeTalky is free software: you can redistribute it and/or modify
+FlyWay Chat is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
-BeTalky is distributed in the hope that it will be useful,
+FlyWay Chat is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
-along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
+along with FlyWay Chat.  If not, see <https://www.gnu.org/licenses/>.
 */
 
 use super::structs::{
@@ -314,7 +314,7 @@ async fn gen_otp_secret(
         1,
         30,
         Secret::default().to_bytes().unwrap(),
-        Some("BeTalky".to_string()),
+        Some("FlyWay Chat".to_string()),
         user.get::<&str, String>("email"),
     )
     .unwrap();

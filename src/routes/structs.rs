@@ -1,19 +1,19 @@
 /*
-Copyright (C) 2024-2025  BeTalky Community
-This file is part of BeTalky.
+Copyright (C) 2024-2025  FlyWay Chat
+This file is part of FlyWay Chat.
 
-BeTalky is free software: you can redistribute it and/or modify
+FlyWay Chat is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
-BeTalky is distributed in the hope that it will be useful,
+FlyWay Chat is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
-along with BeTalky.  If not, see <https://www.gnu.org/licenses/>.
+along with FlyWay Chat.  If not, see <https://www.gnu.org/licenses/>.
 */
 
 use rocket::serde::{Deserialize, Serialize};
@@ -185,7 +185,7 @@ pub struct Role {
     pub name: String,
     pub color: Option<String>,
     pub hoist: bool,
-    pub permissions: usize,
+    pub permissions: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -196,14 +196,14 @@ pub struct Member {
     pub roles: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(crate = "rocket::serde")]
 pub struct Invite {
     pub code: String,
     pub author: String,
     pub expiration: i64,
-    pub max_uses: usize,
-    pub uses: usize,
+    pub max_uses: u64,
+    pub uses: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -223,7 +223,7 @@ pub struct Channel {
 #[serde(crate = "rocket::serde")]
 pub struct ChannelRole {
     pub id: String,
-    pub permissions: usize,
+    pub permissions: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -237,4 +237,27 @@ pub struct Message {
     pub r#type: String,
     pub atachment: Option<String>,
     pub atachment_id: Option<String>,
+}
+
+/* invites.rs */
+
+/* GET /guilds/<guild_id>/invites */
+/* response */
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(crate = "rocket::serde")]
+pub struct ReturnedGuildInvites {
+    pub code: String,
+    pub author: ReturnedUser,
+    pub expiration: i64,
+    pub max_uses: u64,
+    pub uses: u64,
+}
+
+/* POST /guilds/<guild_id>/invites */
+/* body */
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(crate = "rocket::serde")]
+pub struct CreateInviteBody {
+    pub expiration: i64,
+    pub max_uses: u64,
 }
