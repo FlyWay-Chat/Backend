@@ -67,7 +67,8 @@ impl<'r> FromRequest<'r> for Auth {
 pub struct AppError(Status);
 
 impl From<tokio_postgres::Error> for AppError {
-    fn from(_: tokio_postgres::Error) -> Self {
+    fn from(e: tokio_postgres::Error) -> Self {
+        println!("{:}", e);
         AppError(Status::InternalServerError)
     }
 }

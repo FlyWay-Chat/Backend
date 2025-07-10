@@ -116,7 +116,9 @@ async fn create_guild(
                 },
                 ChannelRole {
                     id: "11111111-1111-1111-1111-111111111111".to_string(),
-                    permissions: (ChannelPermissions::VIEW_CHANNEL | ChannelPermissions::SEND_MESSAGES).bits(),
+                    permissions: (ChannelPermissions::VIEW_CHANNEL
+                        | ChannelPermissions::SEND_MESSAGES)
+                        .bits(),
                 },
             ],
             messages: vec![],
@@ -204,6 +206,13 @@ async fn update_guild(
     database: &State<tokio_postgres::Client>,
     user_id: Auth,
 ) -> Result<Json<ReturnedGuild>, AppError> {
+    // Check if name or description are too long
+    if (body.name.is_some() && body.name.as_ref().unwrap().len() > 30)
+        || (body.description.is_some() && body.description.as_ref().unwrap().len() > 1000)
+    {
+        return Err(AppError(Status::BadRequest));
+    }
+
     // Get guild
     let pre_guild = database
         .query_one(
@@ -220,19 +229,13 @@ async fn update_guild(
         return Err(AppError(Status::NotFound));
     }
 
-    let mut guild = pre_guild.unwrap();
+    let guild = pre_guild.unwrap();
 
-    // Get the current user
-    let pre_me = database
-        .query_one(
-            "SELECT member FROM guilds,
-            unnest(members) AS member
-            WHERE id = $1
-            AND member->>'id' = $2",
-            &[&Uuid::parse_str(guild_id).unwrap(), &user_id.0],
-        )
-        .await;
-    let mut me: Member = from_value(pre_me.unwrap().get("member")).unwrap();
+    // Get members
+    let members: Vec<Member> =
+        from_value(Value::Array(guild.get::<&str, Vec<Value>>("members"))).unwrap();
+    // Get the current user (as member)
+    let mut me: Member = members.iter().find(|x| x.id == user_id.0).unwrap().clone();
 
     // Check if can manage the guild
     if !check_guild_permission(&guild, &me.id, GuildPermissions::MANAGE_GUILD) {
@@ -250,21 +253,13 @@ async fn update_guild(
         }
 
         // Check if the new owner exists
-        let pre_new_owner = database
-            .query_one(
-                "SELECT member FROM guilds,
-            unnest(members) AS member
-            WHERE id = $1
-            AND member->>'id' = $2",
-                &[&Uuid::parse_str(guild_id).unwrap(), &body.owner],
-            )
-            .await;
+        let pre_new_owner = members.iter().find(|x| x.id == body.owner.clone().unwrap());
 
-        if pre_new_owner.is_err() {
+        if pre_new_owner.is_none() {
             return Err(AppError(Status::NotFound));
         }
 
-        let mut new_owner: Member = from_value(pre_new_owner.unwrap().get("member")).unwrap();
+        let mut new_owner = pre_new_owner.unwrap().clone();
 
         // "Move" owner role
         me.roles
@@ -273,7 +268,6 @@ async fn update_guild(
             .roles
             .push("00000000-0000-0000-0000-000000000000".to_string());
 
-        // Remove ownership from the source
         database
             .execute(
                 "UPDATE guilds SET members = array_replace(members,
@@ -283,27 +277,19 @@ async fn update_guild(
             WHERE member->>'id' = $1
             ),
             $2
-            ) WHERE id = $3",
+            ) WHERE id = $5
+             
+                UPDATE guilds SET members = array_replace(members,
+            (
+            SELECT member
+            FROM unnest(members) AS member
+            WHERE member->>'id' = $3
+            ),
+            $4
+            ) WHERE id = $5",
                 &[
                     &user_id.0,
                     &to_value(me).unwrap(),
-                    &uuid::Uuid::parse_str(&guild_id).unwrap(),
-                ],
-            )
-            .await?;
-
-        // Add ownership to the target
-        database
-            .execute(
-                "UPDATE guilds SET members = array_replace(members,
-            (
-            SELECT member
-            FROM unnest(members) AS member
-            WHERE member->>'id' = $1
-            ),
-            $2
-            ) WHERE id = $3",
-                &[
                     &body.owner,
                     &to_value(new_owner).unwrap(),
                     &uuid::Uuid::parse_str(&guild_id).unwrap(),
@@ -312,75 +298,45 @@ async fn update_guild(
             .await?;
     }
 
-    if body.name.is_some() {
-        if body.name.as_ref().unwrap().len() > 30 {
-            return Err(AppError(Status::BadRequest));
-        }
-
-        database
-            .execute(
-                "UPDATE guilds SET name = $1 WHERE id = $2",
-                &[
-                    &body.name.as_ref().unwrap(),
-                    &uuid::Uuid::parse_str(&guild_id).unwrap(),
-                ],
-            )
-            .await?;
-    }
-
-    if body.description.is_some() {
-        if body.description.as_ref().unwrap().len() > 1000 {
-            return Err(AppError(Status::BadRequest));
-        }
-
-        database
-            .execute(
-                "UPDATE guilds SET description = $1 WHERE id = $2",
-                &[
-                    &body.description.as_ref().unwrap(),
-                    &uuid::Uuid::parse_str(&guild_id).unwrap(),
-                ],
-            )
-            .await?;
-    }
-
-    if body.public.is_some() {
-        database
-            .execute(
-                "UPDATE guilds SET public = $1 WHERE id = $2",
-                &[
-                    &body.public.as_ref().unwrap(),
-                    &uuid::Uuid::parse_str(&guild_id).unwrap(),
-                ],
-            )
-            .await?;
-    }
-
-    guild = database
-        .query_one(
-            "SELECT * FROM guilds WHERE id = $1",
-            &[&Uuid::parse_str(guild_id).unwrap()],
-        )
-        .await?;
-
-    let returned_guild = ReturnedGuild {
+    let final_guild = ReturnedGuild {
         id: guild.get::<&str, Uuid>("id").to_string(),
-        name: guild.get::<&str, String>("name"),
-        description: guild
-            .try_get::<&str, Option<String>>("description")
-            .unwrap_or(None),
+        name: if body.name.is_some() {
+            body.name.as_ref().unwrap().to_string()
+        } else {
+            guild.get::<&str, String>("name")
+        },
+        description: if body.description.is_some() {
+            Some(body.description.as_ref().unwrap().to_string())
+        } else {
+            guild
+                .try_get::<&str, Option<String>>("description")
+                .unwrap_or(None)
+        },
         icon: guild
             .try_get::<&str, Option<String>>("icon")
             .unwrap_or(None),
-        public: guild.get::<&str, bool>("public"),
+        public: if body.public.is_some() {
+            body.public.unwrap()
+        } else {
+            guild.get::<&str, bool>("public")
+        },
         roles: serde_json::from_value(Value::Array(guild.get::<&str, Vec<Value>>("roles")))
             .unwrap(),
         members: guild.get::<&str, Vec<Value>>("members").len(),
         creation: guild.get::<&str, i64>("creation"),
     };
 
-    let members: Vec<Member> =
-        from_value(Value::Array(guild.get::<&str, Vec<Value>>("members"))).unwrap();
+    database
+        .execute(
+            "UPDATE guilds SET name = $1, description = $2, public = $3 WHERE id = $4",
+            &[
+                &final_guild.name,
+                &final_guild.description,
+                &final_guild.public,
+                &uuid::Uuid::parse_str(&guild_id).unwrap(),
+            ],
+        )
+        .await?;
 
     // Broadcast guildEdited event to every member
     for member in members {
@@ -389,14 +345,14 @@ async fn update_guild(
             &member.id,
             utils::structs::SSEEvent {
                 event: "guildEdited",
-                guild: Some(&returned_guild),
+                guild: Some(&final_guild),
                 ..Default::default()
             },
         )
         .await;
     }
 
-    Ok(Json(returned_guild))
+    Ok(Json(final_guild))
 }
 
 #[delete("/guilds/<guild_id>", format = "json")]
@@ -422,17 +378,18 @@ async fn del_guild(
         return Err(AppError(Status::NotFound));
     }
 
-    // Get the current user
-    let pre_me = database
-        .query_one(
-            "SELECT member FROM guilds,
-            unnest(members) AS member
-            WHERE id = $1
-            AND member->>'id' = $2",
-            &[&Uuid::parse_str(guild_id).unwrap(), &user_id.0],
-        )
-        .await;
-    let me: Member = from_value(pre_me.unwrap().get("member")).unwrap();
+    // Get the current user (as member)
+    let me: Member = from_value(
+        pre_guild
+            .as_ref()
+            .unwrap()
+            .get::<&str, Vec<Value>>("members")
+            .iter()
+            .find(|x| &from_value::<Member>((*x).clone()).unwrap().id == &user_id.0)
+            .unwrap()
+            .clone(),
+    )
+    .unwrap();
 
     // Check if owner
     if !me

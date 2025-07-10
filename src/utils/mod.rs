@@ -20,5 +20,5 @@ pub mod structs;
 
 pub mod account;
 pub mod database;
-pub mod sse;
 pub mod permissions;
+pub mod sse;

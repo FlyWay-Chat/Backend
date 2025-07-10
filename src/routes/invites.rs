@@ -267,21 +267,6 @@ async fn join_invite(
 
     let guild = pre_guild.unwrap();
 
-    // Get invite
-    let invite = database
-        .query_one(
-            "SELECT invite FROM guilds,
-            unnest(invites) AS invite
-            WHERE id = $1
-            AND invite->>'code' = $2",
-            &[&guild.get::<&str, Uuid>("id"), &invite_code],
-        )
-        .await?;
-
-    let mut new_invite: Invite = from_value(invite.get("invite")).unwrap();
-
-    new_invite.uses += 1;
-
     // Append member
     database
         .execute(
@@ -292,9 +277,13 @@ async fn join_invite(
                                         FROM unnest(invites) AS invite
                                         WHERE invite->>'code' = $2
                                     ),
-                                    $3
+                                    (
+                                        SELECT invite || jsonb_build_object('uses', (invite->>'uses')::BIGINT + 1)
+                                        FROM unnest(invites) AS invite
+                                        WHERE invite->>'code' = $2
+                                    )
                                 )
-            WHERE id = $4",
+            WHERE id = $3",
             &[
                 &to_value(Member {
                     id: user_id.0,
@@ -303,7 +292,6 @@ async fn join_invite(
                 })
                 .unwrap(),
                 &invite_code,
-                &to_value(new_invite).unwrap(),
                 &guild.get::<&str, Uuid>("id"),
             ],
         )

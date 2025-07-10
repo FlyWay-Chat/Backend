@@ -89,6 +89,24 @@ async fn patch_me(
     database: &State<tokio_postgres::Client>,
     user_id: Auth,
 ) -> Result<Json<ReturnedUserMe>, AppError> {
+    // Check if username is too long
+    if body.username.is_some() && body.username.as_ref().unwrap().len() > 30 {
+        return Err(AppError(Status::BadRequest));
+    }
+
+    // Check if discriminator is valid
+    if body.discriminator.is_some()
+        && !(body.discriminator.as_ref().unwrap().len() == 4
+            && body.discriminator.as_ref().unwrap().parse::<u16>().is_ok())
+    {
+        return Err(AppError(Status::BadRequest));
+    }
+
+    // Check if about is too long
+    if body.about.is_some() && body.about.as_ref().unwrap().len() > 1000 {
+        return Err(AppError(Status::BadRequest));
+    }
+
     // Get user
     let user = database
         .query_one(
@@ -108,24 +126,7 @@ async fn patch_me(
         return Err(AppError(Status::Unauthorized));
     }
 
-    // Check if username is too long
-    if body.username.is_some() && body.username.as_ref().unwrap().len() > 30 {
-        return Err(AppError(Status::BadRequest));
-    }
-
-    // Check if about is too long
-    if body.about.is_some() && body.about.as_ref().unwrap().len() > 1000 {
-        return Err(AppError(Status::BadRequest));
-    }
-
     if body.discriminator.is_some() {
-        // Check if discriminator is valid
-        if !(body.discriminator.as_ref().unwrap().len() == 4
-            && body.discriminator.as_ref().unwrap().parse::<u16>().is_ok())
-        {
-            return Err(AppError(Status::BadRequest));
-        }
-
         // Check if discriminator is unique
         if database
             .query_one(
@@ -165,40 +166,43 @@ async fn patch_me(
         &user.get::<&str, String>("password")
     };
 
-    // TODO: Allow email changes
-    database.execute("UPDATE users SET username = $1, discriminator = $2, about = $3, email = $4, password = $5, token = $6 WHERE id = $7",
-    &[
-        &body.username.as_ref().unwrap_or(&user.get::<&str, String>("username")), 
-        &body.discriminator.as_ref().unwrap_or(&user.get::<&str, String>("discriminator")),
-        &body.about.as_ref().unwrap_or(&user.try_get::<&str, String>("about").unwrap_or("".to_string())),
-        /*&body.email.as_ref().unwrap_or(*/&user.get::<&str, String>("email")/*)*/,
-        &new_password,
-        &token,
-        &uuid::Uuid::parse_str(&user_id.0).unwrap()
-    ]).await?;
-
-    // Get user with new data
-    let final_user = database
-        .query_one(
-            "SELECT * FROM users WHERE id = $1",
-            &[&uuid::Uuid::parse_str(&user_id.0).unwrap()],
-        )
-        .await?;
-
-    let returned_user = ReturnedUserMe {
-        id: final_user.get::<&str, uuid::Uuid>("id").to_string(),
-        email: final_user.get::<&str, String>("email"),
-        username: final_user.get::<&str, String>("username"),
-        discriminator: final_user.get::<&str, String>("discriminator"),
+    // Create final user
+    let final_user = ReturnedUserMe {
+        id: user_id.0.clone(),
+        email: user.get::<&str, String>("email"), // TODO: Allow email changes
+        username: if body.username.as_ref().is_some() {
+            body.username.as_ref().unwrap().to_string()
+        } else {
+            user.get::<&str, String>("username")
+        },
+        discriminator: if body.discriminator.as_ref().is_some() {
+            body.discriminator.as_ref().unwrap().to_string()
+        } else {
+            user.get::<&str, String>("discriminator")
+        },
         avatar: user
             .try_get::<&str, Option<String>>("avatar")
             .unwrap_or(None),
-        about: user
-            .try_get::<&str, Option<String>>("about")
-            .unwrap_or(None),
-        tfa: final_user.try_get::<&str, String>("otp").is_ok(),
-        creation: final_user.get::<&str, i64>("creation"),
+        about: if body.about.as_ref().is_some() {
+            Some(body.about.as_ref().unwrap().to_string())
+        } else {
+            user.try_get::<&str, Option<String>>("about")
+                .unwrap_or(None)
+        },
+        tfa: user.try_get::<&str, String>("otp").is_ok(),
+        creation: user.get::<&str, i64>("creation"),
     };
+
+    database.execute("UPDATE users SET username = $1, discriminator = $2, about = $3, email = $4, password = $5, token = $6 WHERE id = $7",
+    &[
+        &final_user.username,
+        &final_user.discriminator,
+        &final_user.about,
+        &final_user.email,
+        &new_password,
+        &token,
+        &uuid::Uuid::parse_str(&final_user.id).unwrap()
+    ]).await?;
 
     // Broadcast userEdited event
     utils::sse::broadcast(
@@ -206,13 +210,13 @@ async fn patch_me(
         &user_id.0,
         utils::structs::SSEEvent {
             event: "userEdited",
-            user: Some(&returned_user),
+            user: Some(&final_user),
             ..Default::default()
         },
     )
     .await;
 
-    Ok(Json(returned_user))
+    Ok(Json(final_user))
 }
 
 #[get("/users/@me/guilds", format = "json")]

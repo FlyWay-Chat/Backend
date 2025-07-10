@@ -188,7 +188,7 @@ pub struct Role {
     pub permissions: i64,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(crate = "rocket::serde")]
 pub struct Member {
     pub id: String,

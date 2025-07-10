@@ -86,8 +86,12 @@ pub fn check_channel_permission(
     // Get proper members and channel
     let members: Vec<Member> =
         from_value(Value::Array(guild.get::<&str, Vec<Value>>("members"))).unwrap();
-    let channels: Vec<Channel> = from_value(Value::Array(guild.get::<&str, Vec<Value>>("channels"))).unwrap();
-    let channel = channels.iter().find(|channel| channel.id == *channel_id).unwrap();
+    let channels: Vec<Channel> =
+        from_value(Value::Array(guild.get::<&str, Vec<Value>>("channels"))).unwrap();
+    let channel = channels
+        .iter()
+        .find(|channel| channel.id == *channel_id)
+        .unwrap();
 
     // Get the member's roles
     let member_roles_ids = members
@@ -96,7 +100,8 @@ pub fn check_channel_permission(
         .unwrap()
         .roles
         .clone();
-    let mut member_channel_roles = channel.roles
+    let mut member_channel_roles = channel
+        .roles
         .iter()
         .filter(|role| member_roles_ids.contains(&role.id));
 
